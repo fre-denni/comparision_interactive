@@ -77,6 +77,14 @@
                 margin-bottom: 5px;
             }
 
+
+            #controls #remove-property {
+                background-color: white;
+                color: #783ce6;
+                border: 0.5px solid #783ce6;
+                font-weight: 500;
+            }
+            
             #controls button {
                 border: 0.5px solid #783ce6;
                 padding: 8px;
@@ -87,18 +95,20 @@
                 font-weight: 600;
             }
 
-            #controls button:hover {
+            #controls button:hover, #controls #remove-property:hover {
                 background-color: #a682e8;
                 border: 0.5px solid #783ce6;
+                color: #fff;
             }
 
-            #controls button:active {
+            #controls button:active, #controls #remove-property:active {
                 background-color: #f2a900;
+                border-color: #b17c03;
             }
 
             #controls button:disabled {
                 background-color: #ccc;
-                border-color: #ccc;
+                border-color: #adadad;
                 cursor: not-allowed;
             }
 
@@ -194,6 +204,20 @@
                     return [];
                 }
             };
+
+            //detect and display a message when no data is available
+            function displayCanvasMessage(message) {
+                container.html(''); // Clear previous visualization
+                container.append("text")
+                    .attr("x", width / 2)
+                    .attr("y", height / 2)
+                    .attr("text-anchor", "middle")
+                    .style("font-size", "16px")
+                    .text(message)
+                    .style("align-items", "middle")
+                    .style("fill", "#d4d4d4")
+                    .style("justify-content", "center");
+            }
 
             //dynamic csv web link --> in futuro cambia dinamicamente a seconda del filtro di associazioni
             const webcsv = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTQLeh9W9SjUZ6DDhTqwSTpe_GDRwI_SytVkpKinC03EHTkIzNwQGi9WTNXQNvAienKox-nRVoXax6q/pub?gid=2021488932&single=true&output=csv';
@@ -293,10 +317,12 @@
                     newSelect.on("change", function() {
                         const selectedValue = d3.select(this).property("value");
                         selectedSecondaryProperties[newIndex].value = selectedValue;
+                        updateVisualization();
                     });
                         
                     removePropertyButton.style("display", "block");
                     updateButtonAndCanvasState();
+                    updateVisualization();
 
                 });
 
@@ -304,11 +330,11 @@
                     if (selectedSecondaryProperties.length > 0) {
                         dynamicPropertiesContainer.select(".control-group:last-child").remove();
                         selectedSecondaryProperties.pop();
+                        updateVisualization();
                     }
                     if (selectedSecondaryProperties.length === 0) {
                         removePropertyButton.style("display", "none");
                     }
-                    
                     updateButtonAndCanvasState();
                 });
 
@@ -371,313 +397,298 @@
 
                 /** --- Visualization Logic --- */
                 function updateVisualization() {
-                    console.log("updating visualisation with: ", {selectedProperty1, CENTRAL_NODE});
+                    try {
+                        console.log("updating visualisation with: ", {selectedProperty1, CENTRAL_NODE});
 
-                    // ---- 1.CLEAR PREVIOUS VISUALIZATION ---- //
-                    container.html(''); // Clear previous visualization
+                        // ---- 1.CLEAR PREVIOUS VISUALIZATION ---- //
+                        container.html(''); // Clear previous visualization
 
-                    if (!CENTRAL_NODE || CENTRAL_NODE.length === 0 || !selectedProperty1) {
-                        console.warn("Required properties not set. Aborting visualization update.");
-                        return;
-                    }
-
-                    // ---- 2.FILTER DATA BASED ON CENTRAL NODE ---- //
-                    const centralNodeLowerCase = CENTRAL_NODE.map(c => c.toLowerCase());
-                    const filteredData = data.filter(d =>
-                        parseArrayField(d[selectedProperty1]).some(x =>
-                            centralNodeLowerCase.includes(String(x).toLowerCase())
-                        )
-                    );
-
-                    console.log("Filtered rows:", filteredData.length, filteredData.map(d => d.Title));
-
-                    // ---- 3.CREATE NODES AND LINKS ---- //
-                    const nodes = [];
-                    const links = [];
-                    const addedIds = new Set(); //keep track of added node to prevent duplicates
-
-                    // Add central nodes
-                    CENTRAL_NODE.forEach(nodeId => {
-                        if (!addedIds.has(nodeId)) {
-                            nodes.push({ id: nodeId, type: "central", r: 25 });
-                            addedIds.add(nodeId);
-                        }
-                    });
-
-                    //Add project and secondary property nodes
-                    filteredData.forEach(d => {
-                        const projectID = d.Title;
-                        if (!addedIds.has(projectID)) {
-                            nodes.push({ id: projectID, type: "project", r: 10 });
-                            addedIds.add(projectID);
+                        if (!CENTRAL_NODE || CENTRAL_NODE.length === 0 || !selectedProperty1) {
+                            console.warn("Required properties not set. Aborting visualization update.");
+                            return;
                         }
 
-                        /*
-                        parseArrayField(d[selectedProperty1]).forEach(propValue => {
-                            if (centralNodeLowerCase.includes(propValue.toLowerCase())) {
-                                links.push({ source: propValue, target: projectID });
+                        // ---- 2.FILTER DATA BASED ON CENTRAL NODE ---- //
+                        const centralNodeLowerCase = CENTRAL_NODE.map(c => String(c).toLowerCase());
+                        const filteredData = data.filter(d =>
+                            d[selectedProperty1] && parseArrayField(d[selectedProperty1]).some(x =>
+                                centralNodeLowerCase.includes(String(x).toLowerCase())
+                            )
+                        );
+
+                        console.log("Filtered rows:", filteredData.length, filteredData.map(d => d.Title));
+
+                        // ---- 3.CREATE NODES AND LINKS ---- //
+                        const nodes = [];
+                        const links = [];
+                        const addedIds = new Set(); //keep track of added node to prevent duplicates
+
+                        // Add central nodes
+                        CENTRAL_NODE.forEach(nodeId => {
+                            if (!addedIds.has(nodeId)) {
+                                nodes.push({ id: nodeId, type: "central", r: 25 });
+                                addedIds.add(nodeId);
                             }
                         });
 
-                        parseArrayField(d[selectedProperty2]).forEach(propValue => {
-                            if (!addedIds.has(propValue)) {
-                                nodes.push({id: propValue, type: "second_property", r: 8});
-                                addedIds.add(propValue);
+                        //Add project and secondary property nodes
+                        filteredData.forEach(d => {
+                            const projectID = d.Title;
+                            if (!addedIds.has(projectID)) {
+                                nodes.push({ id: projectID, type: "project", r: 10 });
+                                addedIds.add(projectID);
                             }
-                            links.push({source: projectID, target: propValue});
-                        });                    */
 
-                        if (d[selectedProperty1]) {
-                            parseArrayField(d[selectedProperty1]).forEach(propValue => {
-                                if (centralNodeLowerCase.includes(String(propValue).toLowerCase())) {
-                                    links.push({ source: propValue, target: projectID });
+                            if (d[selectedProperty1]) {
+                                parseArrayField(d[selectedProperty1]).forEach(propValue => {
+                                    if (centralNodeLowerCase.includes(String(propValue).toLowerCase())) {
+                                        links.push({ source: propValue, target: projectID });
+                                    }
+                                });
+                            }
+
+                            selectedSecondaryProperties.forEach((prop, index) => {
+                                if (prop.value && d[prop.value]) {
+                                    parseArrayField(d[prop.value]).forEach(propValue => {
+                                        const propNodeId = `${propValue}_${index}`;
+                                        if (!addedIds.has(propNodeId)) {
+                                            nodes.push({ id: propNodeId, name: propValue, type: `second_property_${index}`, r: 8, color: prop.color });
+                                            addedIds.add(propNodeId);
+                                        }
+                                        links.push({ source: projectID, target: propNodeId });
+                                    });
+                                }
+                            });
+                        });
+
+                        if (nodes.length === 0) {
+                            displayCanvasMessage("No nodes to render.");
+                            return;
+                        }
+
+                        // ---- 4. RENDER VISUALISATION ---- //
+
+                        const stickyLabels = new Set();
+
+                        // Count incoming links for each node to adjust circle size
+                        const linkCountMap = new Map();
+                        links.forEach(l => {
+                                linkCountMap.set(l.source, (linkCountMap.get(l.source) || 0) + 1);
+                                linkCountMap.set(l.target, (linkCountMap.get(l.target) || 0) + 1);
+                        });
+
+                        /**
+                         * Wraps text and dynamically adjusts font size to ensure it fits within the node.
+                         * It then perfectly centers the resulting text block vertically.
+                         */
+                        function wrapText(textSelection) {
+                            const initialFontSize = 15; // The starting font size in px
+                            const minFontSize = 10;     // The smallest font size we'll allow
+                            const lineHeight = 1.1;     // ems
+
+                            textSelection.each(function(d) {
+                                if (d.type !== 'central') return;
+
+                                const text = d3.select(this);
+                                // Get the original words list once.
+                                const originalWords = d.id.split(/\s+/).reverse();
+                                const maxDimension = d.r * 2 * 0.85;
+
+                                let currentFontSize = initialFontSize;
+                                text.attr("transform", null);
+
+                                while (currentFontSize >= minFontSize) {
+                                    text.style("font-size", `${currentFontSize}px`);
+
+                                    // --- BUG FIX HERE ---
+                                    // Create a fresh copy of the words for each iteration.
+                                    // This prevents the list from being empty on subsequent loops.
+                                    let words = [...originalWords];
+
+                                    text.text(null);
+                                    let word;
+                                    let line = [];
+                                    let tspan = text.append("tspan").attr("x", 0);
+                                    
+                                    // This loop now correctly operates on a full list of words every time.
+                                    while (word = words.pop()) {
+                                        line.push(word);
+                                        tspan.text(line.join(" "));
+                                        if (tspan.node().getComputedTextLength() > maxDimension) {
+                                            line.pop();
+                                            tspan.text(line.join(" "));
+                                            line = [word];
+                                            tspan = text.append("tspan").attr("x", 0).attr("dy", `${lineHeight}em`).text(word);
+                                        }
+                                    }
+
+                                    const bbox = text.node().getBBox();
+                                    if (bbox.height < maxDimension && bbox.width < maxDimension) {
+                                        break;
+                                    }
+
+                                    currentFontSize--;
+                                }
+
+                                const finalBbox = text.node().getBBox();
+                                const yOffset = - (finalBbox.y + (finalBbox.height / 2));
+                                // Add a final check to prevent transform with non-finite values
+                                if(isFinite(yOffset)) {
+                                    text.attr("transform", `translate(0, ${yOffset})`);
                                 }
                             });
                         }
 
+                        const maxLinks = d3.max(Array.from(linkCountMap.values()));
+
+                        const radiusScales = {
+                            central: d3.scaleSqrt().domain([1, maxLinks]).range([40, 60]),
+                            project: d3.scaleSqrt().domain([1, maxLinks]).range([10, 20])/*,
+                            second_property: d3.scaleSqrt().domain([1, maxLinks]).range([8, 20])*/
+                            //add dynamically when adding new properties
+                        };
+
                         selectedSecondaryProperties.forEach((prop, index) => {
-                            if (prop.value && d[prop.value]) {
-                                parseArrayField(d[prop.value]).forEach(propValue => {
-                                    const propNodeId = `${propValue}_${index}`;
-                                    if (!addedIds.has(propNodeId)) {
-                                        nodes.push({ id: propNodeId, name: propValue, type: `second_property_${index}` /*dubbio che vada messo*/, r: 8, color: prop.color });
-                                        addedIds.add(propNodeId);
-                                    }
-                                    links.push({ source: projectID, target: propNodeId });
-                                })
-                            }
-                        })
-                    });
-
-                    if (nodes.lenght === 0) {
-                        console.log("No nodes to render.");
-                        return;
-                    }
-
-                    // ---- 4. RENDER VISUALISATION ---- //
-
-                    const stickyLabels = new Set();
-
-                    // Count incoming links for each node to adjust circle size
-                    const linkCountMap = new Map();
-                    links.forEach(l => {
-                            linkCountMap.set(l.source, (linkCountMap.get(l.source) || 0) + 1);
-                            linkCountMap.set(l.target, (linkCountMap.get(l.target) || 0) + 1);
-                    });
-
-                    /**
-                     * Wraps text and dynamically adjusts font size to ensure it fits within the node.
-                     * It then perfectly centers the resulting text block vertically.
-                     */
-                    function wrapText(textSelection) {
-                        const initialFontSize = 15; // The starting font size in px
-                        const minFontSize = 10;     // The smallest font size we'll allow
-                        const lineHeight = 1.1;     // ems
-
-                        textSelection.each(function(d) {
-                            if (d.type !== 'central') return;
-
-                            const text = d3.select(this);
-                            // Get the original words list once.
-                            const originalWords = d.id.split(/\s+/).reverse();
-                            const maxDimension = d.r * 2 * 0.85;
-
-                            let currentFontSize = initialFontSize;
-                            text.attr("transform", null);
-
-                            while (currentFontSize >= minFontSize) {
-                                text.style("font-size", `${currentFontSize}px`);
-
-                                // --- BUG FIX HERE ---
-                                // Create a fresh copy of the words for each iteration.
-                                // This prevents the list from being empty on subsequent loops.
-                                let words = [...originalWords];
-
-                                text.text(null);
-                                let word;
-                                let line = [];
-                                let tspan = text.append("tspan").attr("x", 0);
-                                
-                                // This loop now correctly operates on a full list of words every time.
-                                while (word = words.pop()) {
-                                    line.push(word);
-                                    tspan.text(line.join(" "));
-                                    if (tspan.node().getComputedTextLength() > maxDimension) {
-                                        line.pop();
-                                        tspan.text(line.join(" "));
-                                        line = [word];
-                                        tspan = text.append("tspan").attr("x", 0).attr("dy", `${lineHeight}em`).text(word);
-                                    }
-                                }
-
-                                const bbox = text.node().getBBox();
-                                if (bbox.height < maxDimension && bbox.width < maxDimension) {
-                                    break;
-                                }
-
-                                currentFontSize--;
-                            }
-
-                            const finalBbox = text.node().getBBox();
-                            const yOffset = - (finalBbox.y + (finalBbox.height / 2));
-                            // Add a final check to prevent transform with non-finite values
-                            if(isFinite(yOffset)) {
-                                text.attr("transform", `translate(0, ${yOffset})`);
-                            }
-                        });
-                    }
-
-                    const maxLinks = d3.max(Array.from(linkCountMap.values()));
-
-                    const radiusScales = {
-                        central: d3.scaleSqrt().domain([1, maxLinks]).range([40, 60]),
-                        project: d3.scaleSqrt().domain([1, maxLinks]).range([10, 20])/*,
-                        second_property: d3.scaleSqrt().domain([1, maxLinks]).range([8, 20])*/
-                        //add dynamically when adding new properties
-                    };
-
-                    selectedSecondaryProperties.forEach((prop, index) => {
-                        radiusScales[`second_property_${index}`] = d3.scaleSqrt()
-                                                                    .domain([1, maxLinks])
-                                                                    .range([8, 20]);
-                    });
-
-
-
-                    // Set the radius for each node based on its link count
-                    nodes.forEach(n => {
-                        const linkCount = linkCountMap.get(n.id) || 1;
-                        // Select the appropriate scale based on node type, or a default fallback
-                        const scale = radiusScales[n.type] || d3.scaleSqrt().domain([1, maxLinks]).range([5, 5]);
-                        n.r = scale(linkCount);
-                    });
-
-                    const link = container.append("g")
-                                    .attr("class", "links")
-                                    .selectAll("line")
-                                    .data(links)
-                                    .join("line")
-                                    .attr("stroke", COLOR_LINK) 
-                                    .attr("stroke-width", d => { //capire se funziona
-                                        const sourceCount = linkCountMap.get(d.source.id) || 1;
-                                        const targetCount = linkCountMap.get(d.target.id) || 1;
-                                        //prevent excessivly thick lines
-                                        return 1 + Math.log1p((sourceCount + targetCount) / 2);
-                                    });
-
-                    const node = container.append("g")
-                                    .attr("class", "nodes")
-                                    .selectAll("g")
-                                    .data(nodes)
-                                    .join("g")
-                                    .attr("class", "node");
-                    
-                    node.append("circle")
-                        .attr("r", d => d.r)
-                        /*.attr("fill", d => ({
-                            central: COLOR_REPO_MAIN,
-                            project: COLOR_CONTRIBUTOR,
-                            second_property: COLOR_OWNER
-                        })[d.type]);*/
-                        .attr("fill", d => {
-                            if (d.type === 'central') return COLOR_REPO_MAIN;
-                            if (d.type === 'project') return COLOR_PROJECT;
-                            return d.color || COLOR_OWNER;
-                        })
-
-                    node.append("circle")
-                        .attr("class", "node-ring")
-                        .attr("r", d => d.r + 4)
-                        .attr("fill", "none")
-                        .attr("stroke", COLOR_REPO_MAIN)
-                        .attr("stroke-width", 2)
-                        .attr("visibility", "hidden");
-                    
-                    const labels = node.append("text")
-                        .text(d => d.name || d.id)
-                        .attr("class", "node-label")
-                        .attr("text-anchor", "middle")
-                        .attr("dy", d => d.type === "central" ? "0" : `-${d.r +5}px`)
-                        .style("font-size", d => (d.type === 'central' ? '15px' : '10px'))
-                        .style("font-weight", d => (d.type === 'central' ? 'bold' : 'light'))
-                        .style("fill", d => (d.type === 'central' ? 'white' : COLOR_TEXT))
-                        .style("font-family", d => { 
-                            if (d.type === 'central' || d.type === 'project') return 'Charis SIL, serif';
-                            return 'Inter, sans-serif';
-                        })
-                        .style("pointer-events", "none")
-                        .attr("visibility", d => (d.type === 'central' || d.type === 'project') ? 'visible' : 'hidden');
-
-                    labels.call(wrapText); // Apply text wrapping to labels
-
-                    // Helper function to update all visual highlights
-                    function updateHighlights(hoveredNode = null) {
-                        const activeIds = new Set(stickyLabels);
-                        if (hoveredNode) activeIds.add(hoveredNode.id);
-
-                        node.selectAll(".node-ring").attr("visibility", d => activeIds.has(d.id) ? "visible" : "hidden");
-
-                        labels.attr("visibility", d => activeIds.has(d.id) || d.type === 'central' || d.type === 'project' ? 'visible' : 'hidden');
-
-                        link
-                            .attr("stroke", l => activeIds.has(l.source.id) || activeIds.has(l.target.id) ? "#999" : COLOR_LINK)
-                            .attr("stroke-width", l => activeIds.has(l.source.id) || activeIds.has(l.target.id) ? 2 : 1.5);
-                    }
-
-                    node
-                        .on("mouseenter", (event, d) => updateHighlights(d))
-                        .on("mouseleave", () => updateHighlights(null))
-                        .on("click", (event, d) => {
-                            event.stopPropagation();
-                            stickyLabels.has(d.id) ? stickyLabels.delete(d.id) : stickyLabels.add(d.id);
-                            updateHighlights(null);
+                            radiusScales[`second_property_${index}`] = d3.scaleSqrt()
+                                                                        .domain([1, maxLinks])
+                                                                        .range([8, 20]);
                         });
 
-                    node.call(d3.drag()  //si può modificare per toglierlo?
-                        .on("start", dragstarted)
-                        .on("drag", dragged)
-                        .on("end", dragended));
 
-                    // ---- 5.SETUP SIMULATION ----//
-                    const simulation = d3.forceSimulation(nodes)
-                        .force("link", d3.forceLink(links).id(d => d.id).distance(80).strength(0.5))
-                        .force("charge", d3.forceManyBody().strength(-400))
-                        .force("center", d3.forceCenter(width / 2, height / 2))
-                        .force("collide", d3.forceCollide().radius(d =>  d.r + 10))
-                        .force("x", d3.forceX(width / 2).strength(d => {
-                            // Apply a stronger pull to nodes with no links
-                            return linkCountMap.has(d.id) ? 0.01 : 0.1;
-                        }))
-                        .force("y", d3.forceY(height / 2).strength(d => {
-                            // Apply a stronger pull to nodes with no links
-                            return linkCountMap.has(d.id) ? 0.01 : 0.1;
-                    }));
 
-                    simulation.on("tick", () => {
-                        link
-                            .attr("x1", d => d.source.x)
-                            .attr("y1", d => d.source.y)
-                            .attr("x2", d => d.target.x)
-                            .attr("y2", d => d.target.y);
+                        // Set the radius for each node based on its link count
+                        nodes.forEach(n => {
+                            const linkCount = linkCountMap.get(n.id) || 1;
+                            // Select the appropriate scale based on node type, or a default fallback
+                            const scale = radiusScales[n.type] || d3.scaleSqrt().domain([1, maxLinks]).range([5, 5]);
+                            n.r = scale(linkCount);
+                        });
+
+                        const link = container.append("g")
+                                        .attr("class", "links")
+                                        .selectAll("line")
+                                        .data(links)
+                                        .join("line")
+                                        .attr("stroke", COLOR_LINK) 
+                                        .attr("stroke-width", d => { //capire se funziona
+                                            const sourceCount = linkCountMap.get(d.source.id) || 1;
+                                            const targetCount = linkCountMap.get(d.target.id) || 1;
+                                            //prevent excessivly thick lines
+                                            return 1 + Math.log1p((sourceCount + targetCount) / 2);
+                                        });
+
+                        const node = container.append("g")
+                                        .attr("class", "nodes")
+                                        .selectAll("g")
+                                        .data(nodes)
+                                        .join("g")
+                                        .attr("class", "node");
+                        
+                        node.append("circle")
+                            .attr("r", d => d.r)
+                            .attr("fill", d => {
+                                if (d.type === 'central') return COLOR_REPO_MAIN;
+                                if (d.type === 'project') return COLOR_PROJECT;
+                                return d.color || COLOR_OWNER;
+                            })
+
+                        node.append("circle")
+                            .attr("class", "node-ring")
+                            .attr("r", d => d.r + 4)
+                            .attr("fill", "none")
+                            .attr("stroke", COLOR_REPO_MAIN)
+                            .attr("stroke-width", 2)
+                            .attr("visibility", "hidden");
+                        
+                        const labels = node.append("text")
+                            .text(d => d.name || d.id)
+                            .attr("class", "node-label")
+                            .attr("text-anchor", "middle")
+                            .attr("dy", d => d.type === "central" ? "0" : `-${d.r +5}px`)
+                            .style("font-size", d => (d.type === 'central' ? '15px' : '10px'))
+                            .style("font-weight", d => (d.type === 'central' ? 'bold' : 'light'))
+                            .style("fill", d => (d.type === 'central' ? 'white' : COLOR_TEXT))
+                            .style("font-family", d => { 
+                                if (d.type === 'central' || d.type === 'project') return 'Charis SIL, serif';
+                                return 'Inter, sans-serif';
+                            })
+                            .style("pointer-events", "none")
+                            .attr("visibility", d => (d.type === 'central' || d.type === 'project') ? 'visible' : 'hidden');
+
+                        labels.call(wrapText); // Apply text wrapping to labels
+
+                        // Helper function to update all visual highlights
+                        function updateHighlights(hoveredNode = null) {
+                            const activeIds = new Set(stickyLabels);
+                            if (hoveredNode) activeIds.add(hoveredNode.id);
+
+                            node.selectAll(".node-ring").attr("visibility", d => activeIds.has(d.id) ? "visible" : "hidden");
+
+                            labels.attr("visibility", d => activeIds.has(d.id) || d.type === 'central' || d.type === 'project' ? 'visible' : 'hidden');
+
+                            link
+                                .attr("stroke", l => activeIds.has(l.source.id) || activeIds.has(l.target.id) ? "#999" : COLOR_LINK)
+                                .attr("stroke-width", l => activeIds.has(l.source.id) || activeIds.has(l.target.id) ? 2 : 1.5);
+                        }
+
                         node
-                            .attr("transform", d => `translate(${d.x},${d.y})`);
-                     });
+                            .on("mouseenter", (event, d) => updateHighlights(d))
+                            .on("mouseleave", () => updateHighlights(null))
+                            .on("click", (event, d) => {
+                                event.stopPropagation();
+                                stickyLabels.has(d.id) ? stickyLabels.delete(d.id) : stickyLabels.add(d.id);
+                                updateHighlights(null);
+                            });
 
-                    function dragstarted(event, d) {
-                        if (!event.active) simulation.alphaTarget(0.3).restart();
-                        d.fx = d.x;
-                        d.fy = d.y;
-                    }
+                        node.call(d3.drag()  //si può modificare per toglierlo?
+                            .on("start", dragstarted)
+                            .on("drag", dragged)
+                            .on("end", dragended));
 
-                    function dragged(event, d) {
-                        d.fx = event.x;
-                        d.fy = event.y;
-                    }
+                        // ---- 5.SETUP SIMULATION ----//
+                        const simulation = d3.forceSimulation(nodes)
+                            .force("link", d3.forceLink(links).id(d => d.id).distance(80).strength(0.5))
+                            .force("charge", d3.forceManyBody().strength(-400))
+                            .force("center", d3.forceCenter(width / 2, height / 2))
+                            .force("collide", d3.forceCollide().radius(d =>  d.r + 10))
+                            .force("x", d3.forceX(width / 2).strength(d => {
+                                // Apply a stronger pull to nodes with no links
+                                return linkCountMap.has(d.id) ? 0.01 : 0.1;
+                            }))
+                            .force("y", d3.forceY(height / 2).strength(d => {
+                                // Apply a stronger pull to nodes with no links
+                                return linkCountMap.has(d.id) ? 0.01 : 0.1;
+                        }));
 
-                    function dragended(event, d) {
-                        if (!event.active) simulation.alphaTarget(0);
-                        d.fx = null;
-                        d.fy = null;
+                        simulation.on("tick", () => {
+                            link
+                                .attr("x1", d => d.source.x)
+                                .attr("y1", d => d.source.y)
+                                .attr("x2", d => d.target.x)
+                                .attr("y2", d => d.target.y);
+                            node
+                                .attr("transform", d => `translate(${d.x},${d.y})`);
+                         });
+
+                        function dragstarted(event, d) {
+                            if (!event.active) simulation.alphaTarget(0.3).restart();
+                            d.fx = d.x;
+                            d.fy = d.y;
+                        }
+
+                        function dragged(event, d) {
+                            d.fx = event.x;
+                            d.fy = event.y;
+                        }
+
+                        function dragended(event, d) {
+                            if (!event.active) simulation.alphaTarget(0);
+                            d.fx = null;
+                            d.fy = null;
+                        }
+                    } catch (error) {
+                        console.error("An error occurred during visualization:", error);
+                        displayCanvasMessage(`No correlations available: ${error.message}`);
                     }
                 }
 
@@ -685,22 +696,12 @@
                     const updateButton = d3.select("#update");
                     if (selectedSecondaryProperties.length === 0) {
                         updateButton.property("disabled", true);
-                        container.html(''); // Clear previous visualization
-                        container.append("text")
-                            .attr("x", width / 2)
-                            .attr("y", height / 2)
-                            .attr("text-anchor", "middle")
-                            .style("font-size", "16px")
-                            .text("Please add another property to compare")
-                            .style("align-items", "middle")
-                            .style("fill", "#d3d3d3")
-                            .style("justify-content", "center");
+                        displayCanvasMessage("Please add another property to compare");
                     } else {
                         updateButton.property("disabled", false);
                         container.html(''); // Clear the message
                     }
                 }
-
 
                 /* --- EVENT LISTENERS --- */
                 function handleProperty1Change() {
@@ -709,12 +710,7 @@
                     updateCentralNodeData();
                 }
 
-                /*function handleProperty2Change() {
-                    selectedProperty2 = property2Select.property("value");
-                }*/
-
                 property1Select.on("change", handleProperty1Change);
-                //property2Select.on("change", handleProperty2Change);
                 filterSelect.on("change", updateCentralNodeData);
 
                 // Link the update button to the main visualization function.
@@ -723,15 +719,12 @@
                 /* --- INITIALIZATION --- */
                 // Set the initial state when the page loads.
                 handleProperty1Change();
-                //handleProperty2Change();
-                //-- fin qui funziona tutto
                 updateButtonAndCanvasState();
-
-
+            
             }).catch(error => {
                 console.error('Error loading CSV:', error);
+                displayCanvasMessage(`Error loading data: ${error.message}`);
             });
-
         </script>
     </body>
 </html>
