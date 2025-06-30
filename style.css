@@ -1,0 +1,35 @@
+/*font-family: Inter, Charis SIL, sans-serif, serif;*/
+
+.inter-<uniquifier> {
+  font-family: "Inter", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: <weight>;
+  font-style: normal;
+}
+
+.charis-sil-regular {
+  font-family: "Charis SIL", serif;
+  font-weight: 400;
+  font-style: normal;
+}
+
+.charis-sil-bold {
+  font-family: "Charis SIL", serif;
+  font-weight: 700;
+  font-style: normal;
+}
+
+.charis-sil-regular-italic {
+  font-family: "Charis SIL", serif;
+  font-weight: 400;
+  font-style: italic;
+}
+
+.charis-sil-bold-italic {
+  font-family: "Charis SIL", serif;
+  font-weight: 700;
+  font-style: italic;
+}
+
+
+/*styling che non verrà fatto con d3, qui */

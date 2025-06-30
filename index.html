@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>TRAMA: Comparision map</title>
+        <link rel="stylesheet" type="text/css" href="style.css">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Charis+SIL:ital,wght@0,400;0,700;1,400;1,700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+        <style>
+            html, body {
+                height: 100%;
+                margin: 0;
+                padding: 0;
+                overflow: hidden; /* Prevent scrollbars on the main page */
+                background-color: #f7f7f7;
+            }
+
+            body {
+                display: flex;
+                flex-direction: row; /* Force side-by-side layout */
+                font-family: Inter, sans-serif;
+            }
+
+            /* The controls panel is positioned on top of the visualization */
+            #controls {
+                position: absolute;
+                top: 20px;
+                left: 20px;
+                width: 200px; /* Give it a comfortable fixed width */
+                height: auto;  /* This makes the height 'hug' the content */
+                padding: 15px;
+                display: flex;
+                flex-direction: column; 
+                gap: 15px; 
+                z-index: 10; /* Ensure it's on top */
+                max-height: calc(100vh - 40px); /* Prevent it from getting taller than the screen */
+                overflow: hidden;
+                align-items: start;
+            }
+
+            #controls h3 {
+                margin: 0;
+                font-size: 1.2em;
+                font-family: Charis SIL, serif;
+                font-weight: bold;
+                text-align: center;
+            }
+            
+            .control-group {
+              display: flex;
+              flex-direction: column;
+              width: 100%;
+              gap: 8px;
+            }
+            
+            .control-group label {
+              text-transform: uppercase;
+              font-size: 0.9em;
+              color: black;
+            }
+
+            .control-group select {
+                position: relative;
+                width: fit-content;
+                max-width: calc(200px - 15px);
+                padding: 4px;
+                border-radius: 8px;
+                font-family: Charis SIL, serif;
+            }
+
+            #controls hr {
+                border: 0.5px solid black;
+                width: 100%;
+                margin-top: 5px;
+                margin-bottom: 5px;
+            }
+
+            #controls button {
+                border: 0.5px solid #783ce6;
+                padding: 8px;
+                width: calc(100% - 15px);
+                border-radius: 8px;
+                background-color: #783ce6;
+                color: #fff;
+                font-weight: 600;
+            }
+
+            #controls button:hover {
+                background-color: #a682e8;
+                border: 0.5px solid #783ce6;
+            }
+
+            #controls button:active {
+                background-color: #f2a900;
+            }
+
+            #node-viz {
+                flex-grow: 1; /* Allow the viz div to fill all remaining horizontal space */
+                cursor: move;
+                overflow: hidden; /* Crucially, prevent the SVG from overflowing its container */
+            }
+
+            #node-viz svg {
+                width: 100%;
+                height: 100%;
+            }
+
+
+        </style>
+    </head>
+    <body>
+        <div id="controls">
+            <h3>Data Comparision</h3>
+            <div class="control-group">
+                <label for="property-1">Order by</label>
+                <select id="property-1"></select>
+                <select id="filter-central"></select>
+            </div>
+
+            <div class="control-group">
+                <label for="property-2">and</label>
+                <select id="property-2"></select>
+            </div>
+            <button id="update">Update Visualization</button>
+            
+        </div>
+        </div>
+        <div id="node-viz"></div>
+        <script type="module">
+            import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+
+            ////////////DIMENSIONS////////////
+            const width = 800,
+                height = 800;
+
+            ////////////COLORS////////////
+            const COLOR_BACKGROUND = "#f7f7f7";
+            const COLOR_PURPLE = "#783ce6";
+
+            const COLOR_REPO_MAIN = "#a682e8";
+            const COLOR_PROJECT = "#64d6d3"; // "#b2faf8"
+            const COLOR_OWNER = "#f2a900";
+            const COLOR_CONTRIBUTOR = "#ea9df5";
+
+            const COLOR_LINK = "#e8e8e8";
+            const COLOR_TEXT = "#4d4950";
+
+            const svg = d3.select("#node-viz")
+                .append("svg")
+                .attr("viewBox", `0 0 ${width} ${height}`);
+            
+            const container = svg.append("g");
+
+            const zoom = d3.zoom()
+                .scaleExtent([0.1, 8])
+                .on("zoom", zoomed);
+
+            function zoomed(event) {
+                container.attr("transform", event.transform);
+            }
+
+            svg.call(zoom);
+
+            // — Helper to parse array-like strings robustly —
+            function parseArrayField(str) {
+                try {
+                    // replace single quotes with double quotes to conform to JSON
+                    return JSON.parse(str.replace(/'/g, '"'));
+                } catch (e) {
+                    console.warn("Parsing failed for:", str); //aggiungi poi a mano
+                    return [];
+                }
+            };
+
+            //dynamic csv web link --> in futuro cambia dinamicamente a seconda del filtro di associazioni
+            const webcsv = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTQLeh9W9SjUZ6DDhTqwSTpe_GDRwI_SytVkpKinC03EHTkIzNwQGi9WTNXQNvAienKox-nRVoXax6q/pub?gid=2021488932&single=true&output=csv';
+
+            d3.csv(webcsv).then(data => {
+                console.log(data);
+
+                let CENTRAL_NODE; //could use it as a filter
+                let selectedProperty1; // to store the first property selected
+                let selectedProperty2; // to store the second property selected
+                // qui andranno anche le altre proprietà quando si aggiunge il bottone "add property"
+
+
+
+                /*create the list for the selects*/
+                const properties = [
+                    //"Title", //dubbio, farebbe una visualizzazione alternativa (si può provare)
+                    "Select one",
+                    "Primary Objective",
+                    "Secondary Objectives",
+                    "Beneficiaries",
+                    "Creative Approach",
+                    "Financial Resources",
+                    "Business Model",
+                    "Human Resources",
+                    "Entity Types",
+                    "ICH Domain",
+                    "ICH Elements",
+                    "Data Type",
+                    "Capturing Technologies",
+                    "Representation Technologies",
+                    "Dissemination Technologies",
+                    "Fruition Output"
+                ]; //handpicked headers
+
+                const second_properties = [ //all headers
+                    "Select one",
+                    "Primary Objective",
+                    "Secondary Objectives",
+                    "Beneficiaries",
+                    "Creative Approach",
+                    "Financial Resources",
+                    "Business Model",
+                    "Human Resources",
+                    "Entity Types",
+                    "Competences",
+                    "ICH Domain",
+                    "ICH Elements",
+                    "Data Source",
+                    "Data Type",
+                    "Capturing Technologies",
+                    "Representation Technologies",
+                    "Digitization Output",
+                    "Dissemination Technologies",
+                    "Fruition Output"
+                ]
+
+                // variables for selection
+                const property1Select = d3.select("#property-1");
+                const property2Select = d3.select("#property-2");
+                const filterSelect = d3.select("#filter-central");
+
+                function updatePropertiesSelect(selects, properties){
+                    selects.selectAll('myOptions')
+                        .data(properties)
+                        .enter()
+                        /*.join('option')
+                        .text(d => d) // text showed in the menu
+                        .attr("value", d => d) // corresponding value returned by the button*/
+                        .append('option')
+                        .text(function (d) {return d;}) // text showed in the menu
+                        .attr("value", function (d) {return d; });
+                }
+
+                // Populate the select elements with options
+                updatePropertiesSelect(property1Select, properties);
+                updatePropertiesSelect(property2Select, second_properties);
+
+                //filter
+                //check the corresponding data in the named column (parsed)
+                // display unique values
+                //return them to modify the data viz
+                //if nothing chosen, display all unique elements in more central nodes.
+                 function updateFilterDropdown() {
+
+                    // Use flatMap to iterate over the data, parse the array string from the
+                    // selected column, and flatten the resulting arrays into a single array.
+                    const allValues = data.flatMap(d => {
+                        // Check if the property exists for the row to avoid errors.
+                        if (d[selectedProperty1]) {
+                            return parseArrayField(d[selectedProperty1]);
+                        }
+                        return []; // Return an empty array for empty/missing cells.
+                    });
+
+                    // Create a unique set of values from the flattened array.
+                    const uniqueValues = [...new Set(allValues)].sort();
+                    console.log("Unique values found:", uniqueValues);
+
+                    // Clear any previous options from the filter select.
+                    filterSelect.html('');
+
+                    // Add "All" to the beginning of the options array.
+                    const filterOptions = ["All", ...uniqueValues];
+
+                    // Bind the unique values to new <option> elements.
+                    // The .join() method is a modern way to handle enter, update, and exit selections.
+                    filterSelect.selectAll('option')
+                        .data(filterOptions)
+                        .join('option')
+                        .text(d => d)
+                        .attr('value', d => d);
+                }
+
+                /**
+                 * Updates the CENTRAL_NODE variable based on the current selections
+                 * of the property and filter dropdowns.
+                 */
+                function updateCentralNodeData() {
+                    const selectedFilter = filterSelect.property("value");
+
+                    console.log(`Updating CENTRAL_NODE with Property: '${selectedProperty1}' and Filter: '${selectedFilter}'`);
+
+                    if (selectedFilter === "All") {
+                        // If "All" is selected, populate with all unique values from that property column.
+                        const allValues = data.flatMap(d => d[selectedProperty1] ? parseArrayField(d[selectedProperty1]) : []);
+                        CENTRAL_NODE = [...new Set(allValues)];
+                    } else {
+                        // If a specific value is selected, just use that value.
+                        // Storing it in an array for consistency in your visualization logic.
+                        CENTRAL_NODE = [selectedFilter];
+                    }
+                    console.log("CENTRAL_NODE is now:", CENTRAL_NODE);
+                }
+
+                /** --- Visualization Logic --- */
+                function updateVisualization() {
+                    console.log("updating visualisation with: ", {selectedProperty1, selectedProperty2, CENTRAL_NODE});
+
+                    // ---- 1.CLEAR PREVIOUS VISUALIZATION ---- //
+                    container.html(''); // Clear previous visualization
+
+                    if (!CENTRAL_NODE || CENTRAL_NODE.length === 0 || !selectedProperty1 || !selectedProperty2) {
+                        console.warn("Required properties not set. Aborting visualization update.");
+                        return;
+                    }
+
+                    // ---- 2.FILTER DATA BASED ON CENTRAL NODE ---- //
+                    const centralNodeLowerCase = CENTRAL_NODE.map(c => c.toLowerCase());
+                    const filteredData = data.filter(d =>
+                        parseArrayField(d[selectedProperty1]).some(x =>
+                            centralNodeLowerCase.includes(x.toLowerCase())
+                        )
+                    );
+                    console.log("Filtered rows:", filteredData.length, filteredData.map(d => d.Title));
+
+                    // ---- 3.CREATE NODES AND LINKS ---- //
+                    const nodes = [];
+                    const links = [];
+                    const addedIds = new Set(); //keep track of added node to prevent duplicates
+
+                    // Add central nodes
+                    CENTRAL_NODE.forEach(nodeId => {
+                        if (!addedIds.has(nodeId)) {
+                            nodes.push({ id: nodeId, type: "central", r: 25 });
+                            addedIds.add(nodeId);
+                        }
+                    });
+
+                    //Add project and secondary property nodes
+                    filteredData.forEach(d => {
+                        const projectID = d.Title;
+                        if (!addedIds.has(projectID)) {
+                            nodes.push({ id: projectID, type: "project", r: 10 });
+                            addedIds.add(projectID);
+                        }
+
+                        parseArrayField(d[selectedProperty1]).forEach(propValue => {
+                            if (centralNodeLowerCase.includes(propValue.toLowerCase())) {
+                                links.push({ source: propValue, target: projectID });
+                            }
+                        });
+
+                        parseArrayField(d[selectedProperty2]).forEach(propValue => {
+                            if (!addedIds.has(propValue)) {
+                                nodes.push({id: propValue, type: "second_property", r: 8});
+                                addedIds.add(propValue);
+                            }
+                            links.push({source: projectID, target: propValue});
+                        });
+                    });
+
+                    if (nodes.lenght === 0) {
+                        console.log("No nodes to render.");
+                        return;
+                    }
+
+                    // ---- 4. RENDER VISUALISATION ---- //
+
+                    const stickyLabels = new Set();
+
+                    // Count incoming links for each node to adjust circle size
+                    const linkCountMap = new Map();
+                        links.forEach(l => {
+                            linkCountMap.set(l.source, (linkCountMap.get(l.source) || 0) + 1);
+                            linkCountMap.set(l.target, (linkCountMap.get(l.target) || 0) + 1);
+                    });
+
+                    /**
+                     * Wraps text and dynamically adjusts font size to ensure it fits within the node.
+                     * It then perfectly centers the resulting text block vertically.
+                     */
+                    function wrapText(textSelection) {
+                        const initialFontSize = 15; // The starting font size in px
+                        const minFontSize = 10;     // The smallest font size we'll allow
+                        const lineHeight = 1.1;     // ems
+
+                        textSelection.each(function(d) {
+                            if (d.type !== 'central') return;
+
+                            const text = d3.select(this);
+                            // Get the original words list once.
+                            const originalWords = d.id.split(/\s+/).reverse();
+                            const maxDimension = d.r * 2 * 0.85;
+
+                            let currentFontSize = initialFontSize;
+                            text.attr("transform", null);
+
+                            while (currentFontSize >= minFontSize) {
+                                text.style("font-size", `${currentFontSize}px`);
+
+                                // --- BUG FIX HERE ---
+                                // Create a fresh copy of the words for each iteration.
+                                // This prevents the list from being empty on subsequent loops.
+                                let words = [...originalWords];
+
+                                text.text(null);
+                                let word;
+                                let line = [];
+                                let tspan = text.append("tspan").attr("x", 0);
+                                
+                                // This loop now correctly operates on a full list of words every time.
+                                while (word = words.pop()) {
+                                    line.push(word);
+                                    tspan.text(line.join(" "));
+                                    if (tspan.node().getComputedTextLength() > maxDimension) {
+                                        line.pop();
+                                        tspan.text(line.join(" "));
+                                        line = [word];
+                                        tspan = text.append("tspan").attr("x", 0).attr("dy", `${lineHeight}em`).text(word);
+                                    }
+                                }
+
+                                const bbox = text.node().getBBox();
+                                if (bbox.height < maxDimension && bbox.width < maxDimension) {
+                                    break;
+                                }
+
+                                currentFontSize--;
+                            }
+
+                            const finalBbox = text.node().getBBox();
+                            const yOffset = - (finalBbox.y + (finalBbox.height / 2));
+                            // Add a final check to prevent transform with non-finite values
+                            if(isFinite(yOffset)) {
+                                text.attr("transform", `translate(0, ${yOffset})`);
+                            }
+                        });
+                    }
+
+                    const maxLinks = d3.max(Array.from(linkCountMap.values()));
+
+
+                    const radiusScales = {
+                        central: d3.scaleSqrt().domain([1, maxLinks]).range([40, 60]),
+                        project: d3.scaleSqrt().domain([1, maxLinks]).range([10, 20]),
+                        second_property: d3.scaleSqrt().domain([1, maxLinks]).range([8, 20])
+                        //add dynamically when adding new properties
+                    };
+
+                    // Set the radius for each node based on its link count
+                    nodes.forEach(n => {
+                        const linkCount = linkCountMap.get(n.id) || 1;
+                        // Select the appropriate scale based on node type, or a default fallback
+                        const scale = radiusScales[n.type] || d3.scaleSqrt().domain([1, maxLinks]).range([5, 5]);
+                        n.r = scale(linkCount);
+                    });
+
+                    const link = container.append("g")
+                                    .attr("class", "links")
+                                    .selectAll("line")
+                                    .data(links)
+                                    .join("line")
+                                    .attr("stroke", COLOR_LINK)
+                                    .attr("stroke-width", d => {
+                                        const sourceCount = linkCountMap.get(d.source.id) || 1;
+                                        const targetCount = linkCountMap.get(d.target.id) || 1;
+                                        //prevent excessivly thick lines
+                                        return 1 + Math.log1p((sourceCount + targetCount) / 2);
+                                    });
+
+                    const node = container.append("g")
+                                    .attr("class", "nodes")
+                                    .selectAll("g")
+                                    .data(nodes)
+                                    .join("g")
+                                    .attr("class", "node");
+                    
+                    node.append("circle")
+                        .attr("r", d => d.r)
+                        .attr("fill", d => ({
+                            central: COLOR_REPO_MAIN,
+                            project: COLOR_CONTRIBUTOR,
+                            second_property: COLOR_OWNER
+                        })[d.type]);
+
+                    node.append("circle")
+                        .attr("class", "node-ring")
+                        .attr("r", d => d.r + 4)
+                        .attr("fill", "none")
+                        .attr("stroke", COLOR_REPO_MAIN)
+                        .attr("stroke-width", 2)
+                        .attr("visibility", "hidden");
+                    
+                    const labels = node.append("text")
+                        .text(d => d.id)
+                        .attr("class", "node-label")
+                        .attr("text-anchor", "middle")
+                        .attr("dy", d => d.type === "central" ? "0" : `-${d.r +5}px`)
+                        .style("font-size", d => (d.type === 'central' ? '15px' : '10px'))
+                        .style("font-weight", d => (d.type === 'central' ? 'bold' : 'light'))
+                        .style("fill", d => (d.type === 'central' ? 'white' : COLOR_TEXT))
+                        .style("font-family", d => { 
+                            if (d.type === 'central' || d.type === 'project') return 'Charis SIL, serif';
+                            return 'Inter, sans-serif';
+                        })
+                        .style("pointer-events", "none")
+                        .attr("visibility", d => (d.type === 'central' || d.type === 'project') ? 'visible' : 'hidden');
+
+                    labels.call(wrapText); // Apply text wrapping to labels
+
+                    // Helper function to update all visual highlights
+                    function updateHighlights(hoveredNode = null) {
+                        const activeIds = new Set(stickyLabels);
+                        if (hoveredNode) activeIds.add(hoveredNode.id);
+
+                        node.selectAll(".node-ring").attr("visibility", d => activeIds.has(d.id) ? "visible" : "hidden");
+
+                        labels.attr("visibility", d => activeIds.has(d.id) || d.type === 'central' || d.type === 'project' ? 'visible' : 'hidden');
+
+                        link
+                            .attr("stroke", l => activeIds.has(l.source.id) || activeIds.has(l.target.id) ? "#999" : COLOR_LINK)
+                            .attr("stroke-width", l => activeIds.has(l.source.id) || activeIds.has(l.target.id) ? 2 : 1.5);
+                    }
+
+                    node
+                        .on("mouseenter", (event, d) => updateHighlights(d))
+                        .on("mouseleave", () => updateHighlights(null))
+                        .on("click", (event, d) => {
+                            event.stopPropagation();
+                            stickyLabels.has(d.id) ? stickyLabels.delete(d.id) : stickyLabels.add(d.id);
+                            updateHighlights(null);
+                        });
+
+                    node.call(d3.drag()
+                        .on("start", dragstarted)
+                        .on("drag", dragged)
+                        .on("end", dragended));
+
+                    // ---- 5.SETUP SIMULATION ----//
+                    const simulation = d3.forceSimulation(nodes)
+                        .force("link", d3.forceLink(links).id(d => d.id).distance(80).strength(0.5))
+                        .force("charge", d3.forceManyBody().strength(-400))
+                        .force("center", d3.forceCenter(width / 2, height / 2))
+                        .force("collide", d3.forceCollide().radius(d =>  d.r + 10))
+                        .force("x", d3.forceX(width / 2).strength(d => {
+                            // Apply a stronger pull to nodes with no links
+                            return linkCountMap.has(d.id) ? 0.01 : 0.1;
+                        }))
+                        .force("y", d3.forceY(height / 2).strength(d => {
+                            // Apply a stronger pull to nodes with no links
+                            return linkCountMap.has(d.id) ? 0.01 : 0.1;
+                    }));
+
+                    simulation.on("tick", () => {
+                        link
+                            .attr("x1", d => d.source.x)
+                            .attr("y1", d => d.source.y)
+                            .attr("x2", d => d.target.x)
+                            .attr("y2", d => d.target.y);
+                        node
+                            .attr("transform", d => `translate(${d.x},${d.y})`);
+                     });
+
+                    function dragstarted(event, d) {
+                        if (!event.active) simulation.alphaTarget(0.3).restart();
+                        d.fx = d.x;
+                        d.fy = d.y;
+                    }
+
+                    function dragged(event, d) {
+                        d.fx = event.x;
+                        d.fy = event.y;
+                    }
+
+                    function dragended(event, d) {
+                        if (!event.active) simulation.alphaTarget(0);
+                        d.fx = null;
+                        d.fy = null;
+                    }
+                }
+
+
+                /* --- EVENT LISTENERS --- */
+                function handleProperty1Change() {
+                    selectedProperty1 = property1Select.property("value");
+                    updateFilterDropdown();
+                    updateCentralNodeData();
+                }
+
+                function handleProperty2Change() {
+                    selectedProperty2 = property2Select.property("value");
+                }
+
+                property1Select.on("change", handleProperty1Change);
+                property2Select.on("change", handleProperty2Change);
+                filterSelect.on("change", updateCentralNodeData);
+
+                // Link the update button to the main visualization function.
+                d3.select("#update").on("click", updateVisualization);
+
+                /* --- INITIALIZATION --- */
+                // Set the initial state when the page loads.
+                handleProperty1Change();
+                handleProperty2Change();
+                //-- fin qui funziona tutto
+
+            }).catch(error => {
+                console.error('Error loading CSV:', error);
+            });
+
+        </script>
+    </body>
+</html>
