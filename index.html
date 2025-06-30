@@ -96,6 +96,12 @@
                 background-color: #f2a900;
             }
 
+            #controls button:disabled {
+                background-color: #ccc;
+                border-color: #ccc;
+                cursor: not-allowed;
+            }
+
             #node-viz {
                 flex-grow: 1; /* Allow the viz div to fill all remaining horizontal space */
                 cursor: move;
@@ -107,6 +113,9 @@
                 height: 100%;
             }
 
+            #dynamic-properties .control-group {
+                margin-top: 10px;
+            }
 
         </style>
     </head>
@@ -119,11 +128,16 @@
                 <select id="filter-central"></select>
             </div>
 
+            <div id="dynamic-properties"></div>
+
             <div class="control-group">
-                <label for="property-2">and</label>
+                <!--<label for="property-2">and</label>
                 <select id="property-2"></select>
+                <label for="property-2">Compare with</label>-->
+                <button id="add-property">Add Property</button>
+                <button id="remove-property" style="display: none;">Remove Property</button>
             </div>
-            <button id="update">Update Visualization</button>
+            <button id="update">Update Visualization</button> <!-- aggiungi warning o rendilo unavaible-->
             
         </div>
         </div>
@@ -143,6 +157,13 @@
             const COLOR_PROJECT = "#64d6d3"; // "#b2faf8"
             const COLOR_OWNER = "#f2a900";
             const COLOR_CONTRIBUTOR = "#ea9df5";
+
+            /** check this colors**/
+            const a = "#FF6347";
+            const b = "#4682B4";
+            const c = "#32CD32";
+
+            const secondaryColors = [COLOR_OWNER, COLOR_CONTRIBUTOR, a, b, c];
 
             const COLOR_LINK = "#e8e8e8";
             const COLOR_TEXT = "#4d4950";
@@ -182,9 +203,8 @@
 
                 let CENTRAL_NODE; //could use it as a filter
                 let selectedProperty1; // to store the first property selected
-                let selectedProperty2; // to store the second property selected
-                // qui andranno anche le altre proprietà quando si aggiunge il bottone "add property"
-
+                //let selectedProperty2; // to store the second property selected
+                let selectedSecondaryProperties = []; // dynamic properties to compare
 
 
                 /*create the list for the selects*/
@@ -232,11 +252,15 @@
 
                 // variables for selection
                 const property1Select = d3.select("#property-1");
-                const property2Select = d3.select("#property-2");
+                //const property2Select = d3.select("#property-2");
                 const filterSelect = d3.select("#filter-central");
 
-                function updatePropertiesSelect(selects, properties){
-                    selects.selectAll('myOptions')
+                const dynamicPropertiesContainer = d3.select("#dynamic-properties");
+                const addPropertyButton = d3.select("#add-property");
+                const removePropertyButton = d3.select("#remove-property");
+
+                function updatePropertiesSelect(selectElement, properties){
+                    selectElement.selectAll('myOptions')
                         .data(properties)
                         .enter()
                         /*.join('option')
@@ -249,7 +273,44 @@
 
                 // Populate the select elements with options
                 updatePropertiesSelect(property1Select, properties);
-                updatePropertiesSelect(property2Select, second_properties);
+                //updatePropertiesSelect(property2Select, second_properties);
+
+                addPropertyButton.on("click", () => {
+                        const newIndex = selectedSecondaryProperties.length;
+                        if (newIndex >= secondaryColors.length) {
+                            alert("Maximum number of properties added.");
+                            return;
+                    }
+
+                    //manage dynamically new properties
+                    const controlGroup = dynamicPropertiesContainer.append("div").attr("class", "control-group");
+                    controlGroup.append("label").text(`AND`); //vedi se va bene
+                    const newSelect = controlGroup.append("select").attr("id", `property-${newIndex + 2}`);
+                    updatePropertiesSelect(newSelect, second_properties);
+
+                    selectedSecondaryProperties.push({ select: newSelect, value: null, color: secondaryColors[newIndex] });
+
+                    newSelect.on("change", function() {
+                        const selectedValue = d3.select(this).property("value");
+                        selectedSecondaryProperties[newIndex].value = selectedValue;
+                    });
+                        
+                    removePropertyButton.style("display", "block");
+                    updateButtonAndCanvasState();
+
+                });
+
+                removePropertyButton.on("click", () => {
+                    if (selectedSecondaryProperties.length > 0) {
+                        dynamicPropertiesContainer.select(".control-group:last-child").remove();
+                        selectedSecondaryProperties.pop();
+                    }
+                    if (selectedSecondaryProperties.length === 0) {
+                        removePropertyButton.style("display", "none");
+                    }
+                    
+                    updateButtonAndCanvasState();
+                });
 
                 //filter
                 //check the corresponding data in the named column (parsed)
@@ -310,12 +371,12 @@
 
                 /** --- Visualization Logic --- */
                 function updateVisualization() {
-                    console.log("updating visualisation with: ", {selectedProperty1, selectedProperty2, CENTRAL_NODE});
+                    console.log("updating visualisation with: ", {selectedProperty1, CENTRAL_NODE});
 
                     // ---- 1.CLEAR PREVIOUS VISUALIZATION ---- //
                     container.html(''); // Clear previous visualization
 
-                    if (!CENTRAL_NODE || CENTRAL_NODE.length === 0 || !selectedProperty1 || !selectedProperty2) {
+                    if (!CENTRAL_NODE || CENTRAL_NODE.length === 0 || !selectedProperty1) {
                         console.warn("Required properties not set. Aborting visualization update.");
                         return;
                     }
@@ -324,9 +385,10 @@
                     const centralNodeLowerCase = CENTRAL_NODE.map(c => c.toLowerCase());
                     const filteredData = data.filter(d =>
                         parseArrayField(d[selectedProperty1]).some(x =>
-                            centralNodeLowerCase.includes(x.toLowerCase())
+                            centralNodeLowerCase.includes(String(x).toLowerCase())
                         )
                     );
+
                     console.log("Filtered rows:", filteredData.length, filteredData.map(d => d.Title));
 
                     // ---- 3.CREATE NODES AND LINKS ---- //
@@ -350,6 +412,7 @@
                             addedIds.add(projectID);
                         }
 
+                        /*
                         parseArrayField(d[selectedProperty1]).forEach(propValue => {
                             if (centralNodeLowerCase.includes(propValue.toLowerCase())) {
                                 links.push({ source: propValue, target: projectID });
@@ -362,7 +425,28 @@
                                 addedIds.add(propValue);
                             }
                             links.push({source: projectID, target: propValue});
-                        });
+                        });                    */
+
+                        if (d[selectedProperty1]) {
+                            parseArrayField(d[selectedProperty1]).forEach(propValue => {
+                                if (centralNodeLowerCase.includes(String(propValue).toLowerCase())) {
+                                    links.push({ source: propValue, target: projectID });
+                                }
+                            });
+                        }
+
+                        selectedSecondaryProperties.forEach((prop, index) => {
+                            if (prop.value && d[prop.value]) {
+                                parseArrayField(d[prop.value]).forEach(propValue => {
+                                    const propNodeId = `${propValue}_${index}`;
+                                    if (!addedIds.has(propNodeId)) {
+                                        nodes.push({ id: propNodeId, name: propValue, type: `second_property_${index}` /*dubbio che vada messo*/, r: 8, color: prop.color });
+                                        addedIds.add(propNodeId);
+                                    }
+                                    links.push({ source: projectID, target: propNodeId });
+                                })
+                            }
+                        })
                     });
 
                     if (nodes.lenght === 0) {
@@ -376,7 +460,7 @@
 
                     // Count incoming links for each node to adjust circle size
                     const linkCountMap = new Map();
-                        links.forEach(l => {
+                    links.forEach(l => {
                             linkCountMap.set(l.source, (linkCountMap.get(l.source) || 0) + 1);
                             linkCountMap.set(l.target, (linkCountMap.get(l.target) || 0) + 1);
                     });
@@ -445,13 +529,20 @@
 
                     const maxLinks = d3.max(Array.from(linkCountMap.values()));
 
-
                     const radiusScales = {
                         central: d3.scaleSqrt().domain([1, maxLinks]).range([40, 60]),
-                        project: d3.scaleSqrt().domain([1, maxLinks]).range([10, 20]),
-                        second_property: d3.scaleSqrt().domain([1, maxLinks]).range([8, 20])
+                        project: d3.scaleSqrt().domain([1, maxLinks]).range([10, 20])/*,
+                        second_property: d3.scaleSqrt().domain([1, maxLinks]).range([8, 20])*/
                         //add dynamically when adding new properties
                     };
+
+                    selectedSecondaryProperties.forEach((prop, index) => {
+                        radiusScales[`second_property_${index}`] = d3.scaleSqrt()
+                                                                    .domain([1, maxLinks])
+                                                                    .range([8, 20]);
+                    });
+
+
 
                     // Set the radius for each node based on its link count
                     nodes.forEach(n => {
@@ -466,8 +557,8 @@
                                     .selectAll("line")
                                     .data(links)
                                     .join("line")
-                                    .attr("stroke", COLOR_LINK)
-                                    .attr("stroke-width", d => {
+                                    .attr("stroke", COLOR_LINK) 
+                                    .attr("stroke-width", d => { //capire se funziona
                                         const sourceCount = linkCountMap.get(d.source.id) || 1;
                                         const targetCount = linkCountMap.get(d.target.id) || 1;
                                         //prevent excessivly thick lines
@@ -483,11 +574,16 @@
                     
                     node.append("circle")
                         .attr("r", d => d.r)
-                        .attr("fill", d => ({
+                        /*.attr("fill", d => ({
                             central: COLOR_REPO_MAIN,
                             project: COLOR_CONTRIBUTOR,
                             second_property: COLOR_OWNER
-                        })[d.type]);
+                        })[d.type]);*/
+                        .attr("fill", d => {
+                            if (d.type === 'central') return COLOR_REPO_MAIN;
+                            if (d.type === 'project') return COLOR_PROJECT;
+                            return d.color || COLOR_OWNER;
+                        })
 
                     node.append("circle")
                         .attr("class", "node-ring")
@@ -498,7 +594,7 @@
                         .attr("visibility", "hidden");
                     
                     const labels = node.append("text")
-                        .text(d => d.id)
+                        .text(d => d.name || d.id)
                         .attr("class", "node-label")
                         .attr("text-anchor", "middle")
                         .attr("dy", d => d.type === "central" ? "0" : `-${d.r +5}px`)
@@ -537,7 +633,7 @@
                             updateHighlights(null);
                         });
 
-                    node.call(d3.drag()
+                    node.call(d3.drag()  //si può modificare per toglierlo?
                         .on("start", dragstarted)
                         .on("drag", dragged)
                         .on("end", dragended));
@@ -585,6 +681,26 @@
                     }
                 }
 
+                function updateButtonAndCanvasState() {
+                    const updateButton = d3.select("#update");
+                    if (selectedSecondaryProperties.length === 0) {
+                        updateButton.property("disabled", true);
+                        container.html(''); // Clear previous visualization
+                        container.append("text")
+                            .attr("x", width / 2)
+                            .attr("y", height / 2)
+                            .attr("text-anchor", "middle")
+                            .style("font-size", "16px")
+                            .text("Please add another property to compare")
+                            .style("align-items", "middle")
+                            .style("fill", "#d3d3d3")
+                            .style("justify-content", "center");
+                    } else {
+                        updateButton.property("disabled", false);
+                        container.html(''); // Clear the message
+                    }
+                }
+
 
                 /* --- EVENT LISTENERS --- */
                 function handleProperty1Change() {
@@ -593,12 +709,12 @@
                     updateCentralNodeData();
                 }
 
-                function handleProperty2Change() {
+                /*function handleProperty2Change() {
                     selectedProperty2 = property2Select.property("value");
-                }
+                }*/
 
                 property1Select.on("change", handleProperty1Change);
-                property2Select.on("change", handleProperty2Change);
+                //property2Select.on("change", handleProperty2Change);
                 filterSelect.on("change", updateCentralNodeData);
 
                 // Link the update button to the main visualization function.
@@ -607,8 +723,10 @@
                 /* --- INITIALIZATION --- */
                 // Set the initial state when the page loads.
                 handleProperty1Change();
-                handleProperty2Change();
+                //handleProperty2Change();
                 //-- fin qui funziona tutto
+                updateButtonAndCanvasState();
+
 
             }).catch(error => {
                 console.error('Error loading CSV:', error);
