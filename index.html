@@ -646,7 +646,7 @@
                             .on("end", dragended));
 
                         // ---- 5.SETUP SIMULATION ----//
-                        const simulation = d3.forceSimulation(nodes)
+                       /* const simulation = d3.forceSimulation(nodes)
                             .force("link", d3.forceLink(links).id(d => d.id).distance(80).strength(0.5))
                             .force("charge", d3.forceManyBody().strength(-400))
                             .force("center", d3.forceCenter(width / 2, height / 2))
@@ -658,7 +658,17 @@
                             .force("y", d3.forceY(height / 2).strength(d => {
                                 // Apply a stronger pull to nodes with no links
                                 return linkCountMap.has(d.id) ? 0.01 : 0.1;
-                        }));
+                        }));*/
+
+                        const simulation = d3.forceSimulation(nodes)
+                            .force("link", d3.forceLink(links).id(d => d.id).distance(80).strength(0.5))
+                            .force("charge", d3.forceManyBody().strength(-400))
+                            .force("collide", d3.forceCollide().radius(d => d.r + 10))
+                            // Force to keep central nodes in the middle
+                            .force("x", d3.forceX(width / 2).strength(d => d.type === 'central' ? 0.8 : 0.05))
+                            .force("y", d3.forceY(height / 2).strength(d => d.type === 'central' ? 0.8 : 0.05))
+                            // Force to arrange project nodes in a ring
+                            .force("r", d3.forceRadial(250, width / 2, height / 2).strength(d => d.type === 'project' ? 0.9 : 0));
 
                         simulation.on("tick", () => {
                             link
@@ -686,6 +696,7 @@
                             d.fx = null;
                             d.fy = null;
                         }
+
                     } catch (error) {
                         console.error("An error occurred during visualization:", error);
                         displayCanvasMessage(`No correlations available: ${error.message}`);
