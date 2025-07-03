@@ -11,6 +11,8 @@
         <!-- import libraries-->
         <script src="https://d3js.org/d3.v7.min.js"></script>
         <script src="./lib/d3-bboxCollide.min.js"></script>
+        <script src="./lib/d3-delaunay.js"></script>
+        <script src="./createCompetencesVisual.js"></script>
 
         <style>
         /*add your custom styles here*/
@@ -18,8 +20,17 @@
     </head>
     <body>
         <!--add HTML elements-->
+        <div id="chart-container"></div>
         <script>
-            
+
+        let container = document.getElementById("chart-container"); //create container element
+        let width = container.offsetWidth;  //get container width
+        let height = width;
+
+        const webcsv = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTQLeh9W9SjUZ6DDhTqwSTpe_GDRwI_SytVkpKinC03EHTkIzNwQGi9WTNXQNvAienKox-nRVoXax6q/pub?gid=2021488932&single=true&output=csv';
+
+        createCompetencesVisual(container, webcsv);
+
         </script>
     </body>
 </html>
