@@ -1,8 +1,8 @@
-/////////////////////////////////////////////////////////////////////
-/////////////// Visualization designed & developed by ///////////////
-/////////////////////////// Federico Denni ///////////////////////////
+////////////////////////////////////////////////////////////////////
+/////////////// Visualization designed & developed by //////////////
+/////////////////////////// Federico Denni /////////////////////////
 ///////////////////////// federicodenni.com ////////////////////////
-/////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////
 
 /////////// Credits VisualCinnamon, Observable & the overlord Gemini
 /////////// Interactive visualisation of Intangible Cultural Heritage Best Practices
@@ -103,7 +103,7 @@ const createCompetencesVisual = (container, webcsv) => {
     let HEIGHT = DEFAULT_SIZE;
     let width = DEFAULT_SIZE;
     let height = DEFAULT_SIZE;
-    let SF, PIXEL_RATIO;
+    let SF;
 
 
     ////////////////////////////////////////////
@@ -167,9 +167,9 @@ const createCompetencesVisual = (container, webcsv) => {
         });
 
         donutData = Array.from(centralMap, ([central, hier]) => ({
-            slices: central,
-            count: hier.size,
-            hierarchy: Array.from(hier)
+            name: central,
+            value: hier.size,
+            link: Array.from(hier)
         })); //data for donut shape
 
         ringData = cleanedData.map(d => ({
@@ -189,6 +189,8 @@ const createCompetencesVisual = (container, webcsv) => {
         console.log(donutData);
         console.log(ringData);
         console.log(commons);
+
+        draw();
     }//prepare data for visualisation
 
 
@@ -262,56 +264,89 @@ const createCompetencesVisual = (container, webcsv) => {
     /////////////////// Donut /////////////////////
     /// take number of links_central and uses it as a value
     function donut() {
-        height = min(width, 500);
-        const radius = CHORD /2;
+        console.log("Drawing donut...");
+        const radius = CHORD;
 
         const arc = d3.arc()
-            .innerRadius(radius * 0.67)
-            .outerRadius(radius - 1);
+                    .innerRadius(radius*0.67)
+                    .outerRadius(radius - 1); //controlla valori
 
         const pie = d3.pie()
-            .padAngle(1 / radius)
-            .sort(null)
-            .value(d => d.value);
+                    .startAngle(-90 * PI/180)
+                    .endAngle(-90 * PI/180 + 2*PI)
+                    .padAngle(1 / radius)
+                    .sort(null)
+                    .value(d => d.value);
 
+        //define donut object
         const donut = g.append("g")
-                .attr("id", "donut-central")
-                .attr("width", width)
-                .attr("height", height)
-                //.attr("viewBox", [-width /2, -height/2, width, height])
-                .attr("style", "max-width: 100%; height:auto;");
-        
+                        .attr("id", "donut-chart")
+                        .attr("width", width)
+                        .attr("height", height)
+                        .style("max-width", "100%")
+                        .style("height", "auto");
+        //draw donut and data join
         donut.selectAll()
              .data(pie(donutData))
-             .join("path")
-                .attr("fill", COLORS.central)
-                .attr("d", arc)
-             .append("title")
-                .text(d => d.donutData.slices);
-        
-        donut.append("g")
-             .attr("font-family", "Inter, sans-serif")
-             .attr("font-size", "12px")
-             .attr("text-anchor", "middle")
-             .selectAll()
-             .data(pie(donutData))
-             .join("text")
-                .attr("transform", d => `translate(${arc.centroid(d)})`)
-                .call(text => text.append("tspan")
-                    .attr("y", "-0.4em")
-                    .attr("font-weight", "bold")
-                    .text(d => d.donutData.slices))
-               /* .call(text => text.filter(d => (d.endAngle - d.startAngle) > 0.25).append("tspan")
-                    .attr("x", 0)
-                    .attr("y", "0.7em")
-                    .attr("fill-opacity", 0.7)
-                    .text(d => d.donutData.))*/;
-        
+             .enter().append("path")
+             .attr("class", "donutArcSlices")
+             .attr("d", arc)
+             .style("fill", COLORS.central)
+             .style("border-radius", 8)
+             .each(function(d, i){
+                //Search pattern for everything between the start and the first capital L
+                var firstArcSection = /(^.+?)L/;
+                //Grab everything up to the first Line statement
+                var newArc = firstArcSection.exec(d3.select(this).attr("d"))[1];
+                //Replace all the commas so that IE can handle it
+                newArc = newArc.replace(/,/g , " ");
+
+                //If the end angle lies beyond a quarter of a circle (90 degrees or pi/2)
+                //rewrite the svg : flip the end and start position
+                if (d.endAngle > 90 * PI/180) {
+                    //Everything between the capital M and first capital A
+                    var startLoc = /M(.*?)A/;
+                    //Everything between the capital A and 0 0 1
+                    var middleLoc = /A(.*?)0 0 1/;
+                    //Everything between the 0 0 1 and the end of the string (denoted by $)
+                    var endLoc = /0 0 1 (.*?)$/;
+                    //Flip the direction of the arc by switching the start and end point
+                    //and using a 0 (instead of 1) sweep flag
+                    var newStart = endLoc.exec( newArc )[1];
+                    var newEnd = startLoc.exec( newArc )[1];
+                    var middleSec = middleLoc.exec( newArc )[1];
+
+                    //Build up the new arc notation, set the sweep-flag to 0
+                    newArc = "M" + newStart + "A" + middleSec + "0 0 0 " + newEnd;
+                }
+
+                //create a new invisible arc for the text
+                donut.append("path")
+                     .attr("class", "hiddenDonut")
+                     .attr("id", "donutArc"+i)
+                     .attr("d", newArc)
+                     .style("fill", "none");
+             });
+       
+       //text around label
+       donut.selectAll()
+            .data(pie(donutData))
+            .enter().append("text")
+            .attr("class", "donutText")
+            .attr("font-size", 12)
+            .attr("font-weight", "bold")
+            .attr("dy", function(d, i){
+                return (d.endAngle > 90 * PI/180 ? 18 : -11);
+            })
+            .append("textPath")
+            .attr("startOffset", "50%")
+            .style("text-anchor", "middle")
+            .attr("xlink:href", function(d,i){return "#donutArc"+i;})
+            //.call(text => text.filter(d => (d.endAngle - d.startAngle) > 0.5).append("tspan")
+            .style("visibility", d => (d.endAngle - d.startAngle) > 0.75 ? "visible" : "hidden")
+            .text(function(d){return d.data.name});
     }
 
-    /// make a d3.pie() calculations to find angle
-    /// make an arc chart to create a donut shape
-    /// style the sections
 
     ////////// Force-Layout 1 ////////////////////
 
