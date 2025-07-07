@@ -190,7 +190,7 @@ const createCompetencesVisual = (container, webcsv) => {
         console.log(ringData);
         console.log(commons);
 
-        //draw();
+        draw();
     }//prepare data for visualisation
 
 
@@ -239,7 +239,7 @@ const createCompetencesVisual = (container, webcsv) => {
          * 
          *************/
         //hovers
-        handleDonutHover();
+        //handleDonutHover();
 
     }//function draw
 
@@ -271,15 +271,15 @@ const createCompetencesVisual = (container, webcsv) => {
         const radius = CHORD;
 
         const arc = d3.arc()
-                    //.cornerRadius(2)
-                    .innerRadius(radius*0.67)
-                    .outerRadius(radius - 1); //controlla valori
+                    .cornerRadius(5)
+                    .innerRadius(radius*0.8)
+                    .outerRadius(radius - 1);
 
         const pie = d3.pie()
                     .startAngle(-90 * PI/180)
                     .endAngle(-90 * PI/180 + 2*PI)
-                    .padAngle(1 / radius)
-                    .sort(null)
+                    .padAngle(2 / radius)
+                    .sort(null) //potrei voler aggiungere un ordine di grandezza
                     .value(d => d.value);
 
         //define donut object
@@ -289,66 +289,14 @@ const createCompetencesVisual = (container, webcsv) => {
                         .attr("height", height)
                         .style("max-width", "100%")
                         .style("height", "auto");
+
         //draw donut and data join
         donut.selectAll()
              .data(pie(donutData))
              .enter().append("path")
              .attr("class", "donutArcSlices")
              .attr("d", arc)
-             .style("fill", COLORS.central)
-             .style("border-radius", 8)
-             .each(function(d, i){
-                //Search pattern for everything between the start and the first capital L
-                var firstArcSection = /(^.+?)L/;
-                //Grab everything up to the first Line statement
-                var newArc = firstArcSection.exec(d3.select(this).attr("d"))[1];
-                //Replace all the commas so that IE can handle it
-                newArc = newArc.replace(/,/g , " ");
-
-                //If the end angle lies beyond a quarter of a circle (90 degrees or pi/2)
-                //rewrite the svg : flip the end and start position
-                if (d.endAngle > 90 * PI/180) {
-                    //Everything between the capital M and first capital A
-                    var startLoc = /M(.*?)A/;
-                    //Everything between the capital A and 0 0 1
-                    var middleLoc = /A(.*?)0 0 1/;
-                    //Everything between the 0 0 1 and the end of the string (denoted by $)
-                    var endLoc = /0 0 1 (.*?)$/;
-                    //Flip the direction of the arc by switching the start and end point
-                    //and using a 0 (instead of 1) sweep flag
-                    var newStart = endLoc.exec( newArc )[1];
-                    var newEnd = startLoc.exec( newArc )[1];
-                    var middleSec = middleLoc.exec( newArc )[1];
-
-                    //Build up the new arc notation, set the sweep-flag to 0
-                    newArc = "M" + newStart + "A" + middleSec + "0 0 0 " + newEnd;
-                }
-
-                //create a new invisible arc for the text
-                donut.append("path")
-                     .attr("class", "hiddenDonut")
-                     .attr("id", "donutArc"+i)
-                     .attr("d", newArc)
-                     .style("fill", "none");
-             });
-       
-       //text around path
-       donut.selectAll()
-            .data(pie(donutData))
-            .enter().append("text")
-            .attr("class", "donutText")
-            .attr("font-size", 12)
-            .attr("font-weight", "bold")
-            .attr("dy", function(d, i){
-                return (d.endAngle > 90 * PI/180 ? 18 : -11);
-            })
-            .append("textPath")
-            .attr("startOffset", "50%")
-            .style("text-anchor", "middle")
-            .attr("xlink:href", function(d,i){return "#donutArc"+i;})
-            //.call(text => text.filter(d => (d.endAngle - d.startAngle) > 0.5).append("tspan")
-            .style("visibility", /*d => (d.endAngle - d.startAngle) > 0.5 ? "visible" :*/ "hidden")
-            .text(function(d){return d.data.name});
+             .style("fill", COLORS.central);
     }
 
     ////////// Force-Layout 1 ////////////////////
@@ -358,7 +306,7 @@ const createCompetencesVisual = (container, webcsv) => {
     /////////////////////////////////////////////
     //////////// Set up Hovers /////////////////
     ///////////////////////////////////////////
-
+/*
     function handleDonutHover() {
         const donutSlices = donut.selectAll(".donutArcSlices");
         const donutTexts = donut.selectAll(".donutText textPath");
@@ -384,7 +332,7 @@ const createCompetencesVisual = (container, webcsv) => {
                 donutTexts
                     .style("visibility", "hidden");
             });
-    }
+    }*/
 
     chart();
 }
