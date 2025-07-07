@@ -190,7 +190,7 @@ const createCompetencesVisual = (container, webcsv) => {
         console.log(ringData);
         console.log(commons);
 
-        draw();
+        //draw();
     }//prepare data for visualisation
 
 
@@ -238,6 +238,9 @@ const createCompetencesVisual = (container, webcsv) => {
          * Draw labels
          * 
          *************/
+        //hovers
+        handleDonutHover();
+
     }//function draw
 
     chart.resize = () => {
@@ -268,6 +271,7 @@ const createCompetencesVisual = (container, webcsv) => {
         const radius = CHORD;
 
         const arc = d3.arc()
+                    //.cornerRadius(2)
                     .innerRadius(radius*0.67)
                     .outerRadius(radius - 1); //controlla valori
 
@@ -328,7 +332,7 @@ const createCompetencesVisual = (container, webcsv) => {
                      .style("fill", "none");
              });
        
-       //text around label
+       //text around path
        donut.selectAll()
             .data(pie(donutData))
             .enter().append("text")
@@ -343,14 +347,44 @@ const createCompetencesVisual = (container, webcsv) => {
             .style("text-anchor", "middle")
             .attr("xlink:href", function(d,i){return "#donutArc"+i;})
             //.call(text => text.filter(d => (d.endAngle - d.startAngle) > 0.5).append("tspan")
-            .style("visibility", d => (d.endAngle - d.startAngle) > 0.75 ? "visible" : "hidden")
+            .style("visibility", /*d => (d.endAngle - d.startAngle) > 0.5 ? "visible" :*/ "hidden")
             .text(function(d){return d.data.name});
     }
-
 
     ////////// Force-Layout 1 ////////////////////
 
     /////////  Force-Layout 2 ////////////////////
+
+    /////////////////////////////////////////////
+    //////////// Set up Hovers /////////////////
+    ///////////////////////////////////////////
+
+    function handleDonutHover() {
+        const donutSlices = donut.selectAll(".donutArcSlices");
+        const donutTexts = donut.selectAll(".donutText textPath");
+
+        donutSlices
+            .on("mouseover", function(event, d) {
+                console.log("hovered");
+                // Dim all other slices
+                donutSlices.transition().duration(200)
+                    .style("opacity", p => (p.index === d.index ? 1.0 : 0.3));
+
+                // Show the corresponding text
+                donutTexts
+                    .style("visibility", p => (p.index === d.index ? "visible" : "hidden"));
+            })
+            .on("mouseout", function() {
+                console.log("unhovered");
+                // Restore opacity of all slices
+                donutSlices.transition().duration(200)
+                    .style("opacity", 1.0);
+
+                // Hide all texts
+                donutTexts
+                    .style("visibility", "hidden");
+            });
+    }
 
     chart();
 }
