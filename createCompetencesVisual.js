@@ -48,14 +48,13 @@ const createCompetencesVisual = (container, webcsv) => {
     let hierarchy = "Title"; //user determined
     let central_nodes = "Fruition Output";
     let properties = "Human Resources";
-    let defaultLabel = "Competences and Human Resources of ICH project";
+    let defaultLabel = "Map of Competences and Human Resources for ICH projects";
 
     //Hover options
     let HOVER_ACTIVE = false;
     let HOVERED_NODE = null;
     let CLICK_ACTIVE = false;
     let CLICKED_NODE = null;
-    let labelHover;
 
     //Visual settings
     const CHORD = 150; //radius of central chord with the nodes -- make variable for future
@@ -107,7 +106,7 @@ const createCompetencesVisual = (container, webcsv) => {
         .style("margin", "0");
     
     const g = svg.append("g")
-                 .attr("transform",`translate(${width / 2}, ${height / 2})`);
+                 .attr("transform",`translate(${width / 2}, ${height / 2})`); //center g
 
     ////////////////////////////////////////////
     //////////// Create Functions //////////////
@@ -232,6 +231,9 @@ const createCompetencesVisual = (container, webcsv) => {
         //draw central donut shape
         donut();
 
+        //position hierarchy
+        //forceHierarchyNodes();
+
         /************
          * 
          * Draw links
@@ -261,7 +263,7 @@ const createCompetencesVisual = (container, webcsv) => {
         SF = WIDTH / DEFAULT_SIZE;
         /*****
          * ring logic (resize SF if ring doesn't fit)
-         */
+         ******/
         draw();
     }
     
@@ -270,7 +272,6 @@ const createCompetencesVisual = (container, webcsv) => {
     function donut() {
         console.log("Drawing donut...");
         const radius = CHORD;
-        let label;
 
         const arc = d3.arc()
                     .cornerRadius(5)
@@ -282,7 +283,7 @@ const createCompetencesVisual = (container, webcsv) => {
                     .endAngle(-90 * PI/180 + 2*PI)
                     .padAngle(2 / radius)
                     .sort(null) //potrei voler aggiungere un ordine di grandezza
-                    .value(d => d.value);
+                    .value(d => d.value); //aggiungi una scala (?)
 
         //define donut object
         const donut = g.append("g")
@@ -301,7 +302,7 @@ const createCompetencesVisual = (container, webcsv) => {
              .style("fill", COLORS.central)
 
 
-        //manage hover of slices
+        //manage hover of slices -- spostarla in una funzione esterna così da fare stesso effetto ad altri elementi della dataviz
         slices.on("mouseover", function(event, d) {
                     slices.transition()
                       .duration(200)
@@ -318,16 +319,27 @@ const createCompetencesVisual = (container, webcsv) => {
                });
 
         //hover slice
-        // Call the labelCentral function
-        // You can pass a default text or a text from your data
-        // For example, you can show the name of the first central node
-        labelCentral(defaultLabel, COLORS.background)
-        //add donutData name to a circle inside the donut
+        labelCentral(defaultLabel, COLORS.background);
+
     }
 
-    ////////// Force-Layout 1 ////////////////////
+    /////////////// Force-Layout 1 ///////////////
+    function hierarchyRing(){
+        console.log("Drawing ring...");
+        const radius = RADIUS_PROJECTS;
 
-    /////////  Force-Layout 2 ////////////////////
+        const circles = g.append("circle")
+                         .attr("id", "hierarchyRing")
+                         .attr("width", width)
+                         .attr("height", height)
+                         .attr("r", radius)
+                         .attr("fill", COLORS["third-property"])
+
+    }
+
+    /////////////// Force-Layout 2 ///////////////
+
+
 
     //////////////////////////////////////////////
     //////////// Set up Hovers ///////////////////
