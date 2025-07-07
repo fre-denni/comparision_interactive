@@ -12,7 +12,7 @@
 /***************** 
  * To do:
  * 
- * - Create round chord visual for the central nodes -> test interactivity with select element
+ * - Test central chord element with clicked function
  * - Create Force-layout for rings of project nodes around the central nodes
  * - Create stacked/cleaned connections between project nodes and central nodes
  * - Create second force layout the properties around the projects
@@ -36,6 +36,7 @@ const createCompetencesVisual = (container, webcsv) => {
     let sqrt = Math.sqrt;
     let min = Math.min;
     let max = Math.max;
+    let abs = Math.abs;
 
     //Datasets -- capire
     let donutData = [];
@@ -47,12 +48,14 @@ const createCompetencesVisual = (container, webcsv) => {
     let hierarchy = "Title"; //user determined
     let central_nodes = "Fruition Output";
     let properties = "Human Resources";
+    let defaultLabel = "Competences and Human Resources of ICH project";
 
     //Hover options
     let HOVER_ACTIVE = false;
     let HOVERED_NODE = null;
     let CLICK_ACTIVE = false;
     let CLICKED_NODE = null;
+    let labelHover;
 
     //Visual settings
     const CHORD = 150; //radius of central chord with the nodes -- make variable for future
@@ -83,17 +86,6 @@ const createCompetencesVisual = (container, webcsv) => {
     };
 
     //////////////////////////////////////////
-    /////////////// Create SVG ///////////////
-    //////////////////////////////////////////
-
-    const svg = d3.select(container).append("svg") //refactor following schema gemini
-        .attr("id", "visualisation")
-        .style("display", "block")
-        .style("margin", "0");
-    
-    const g = svg.append("g")
-
-    //////////////////////////////////////////
     /////////////// Set Sizes ////////////////
     //////////////////////////////////////////
 
@@ -105,6 +97,17 @@ const createCompetencesVisual = (container, webcsv) => {
     let height = DEFAULT_SIZE;
     let SF;
 
+    //////////////////////////////////////////
+    /////////////// Create SVG ///////////////
+    //////////////////////////////////////////
+
+    const svg = d3.select(container).append("svg") //refactor following schema gemini
+        .attr("id", "visualisation")
+        .style("display", "block")
+        .style("margin", "0");
+    
+    const g = svg.append("g")
+                 .attr("transform",`translate(${width / 2}, ${height / 2})`);
 
     ////////////////////////////////////////////
     //////////// Create Functions //////////////
@@ -126,9 +129,9 @@ const createCompetencesVisual = (container, webcsv) => {
         .exponent(0.75)
         .range([1,2,60])
 
-    ///////////////////////////////////////////////
-    /////////////// Prepare data //////////////////
-    ///////////////////////////////////////////////
+    /////////////////////////////////////////////
+    /////////////// Prepare data ////////////////
+    /////////////////////////////////////////////
 
     function prepareData(table) {
         const parseStringifiedArray = (str) => {
@@ -202,9 +205,9 @@ const createCompetencesVisual = (container, webcsv) => {
 
         //prepare data
         d3.csv(webcsv)
-        .then(prepareData)
+        .then(prepareData) //add a loading animation?
         .catch(error => {
-            console.error('Error loading or parsing CSV:', error);
+            console.error('Error loading or parsing CSV:', error); 
         });
 
         /**********
@@ -238,7 +241,6 @@ const createCompetencesVisual = (container, webcsv) => {
          * Draw labels
          * 
          *************/
-        //hovers
         //handleDonutHover();
 
     }//function draw
@@ -260,7 +262,6 @@ const createCompetencesVisual = (container, webcsv) => {
         /*****
          * ring logic (resize SF if ring doesn't fit)
          */
-
         draw();
     }
     
@@ -269,6 +270,7 @@ const createCompetencesVisual = (container, webcsv) => {
     function donut() {
         console.log("Drawing donut...");
         const radius = CHORD;
+        let label;
 
         const arc = d3.arc()
                     .cornerRadius(5)
@@ -291,48 +293,111 @@ const createCompetencesVisual = (container, webcsv) => {
                         .style("height", "auto");
 
         //draw donut and data join
-        donut.selectAll()
+        const slices = donut.selectAll()
              .data(pie(donutData))
              .enter().append("path")
              .attr("class", "donutArcSlices")
              .attr("d", arc)
-             .style("fill", COLORS.central);
+             .style("fill", COLORS.central)
+
+
+        //manage hover of slices
+        slices.on("mouseover", function(event, d) {
+                    slices.transition()
+                      .duration(200)
+                      .style("opacity", (slice_d) => (slice_d.data.name === d.data.name ? 1.0 : 0.5));
+    
+                    labelCentral(d.data.name, COLORS.central);
+               })
+               .on("mouseout", function(event, d){
+                    slices.transition()
+                      .duration(200)
+                      .style("opacity", 1);
+
+                    labelCentral(defaultLabel, COLORS.background)
+               });
+
+        //hover slice
+        // Call the labelCentral function
+        // You can pass a default text or a text from your data
+        // For example, you can show the name of the first central node
+        labelCentral(defaultLabel, COLORS.background)
+        //add donutData name to a circle inside the donut
     }
 
     ////////// Force-Layout 1 ////////////////////
 
     /////////  Force-Layout 2 ////////////////////
 
-    /////////////////////////////////////////////
-    //////////// Set up Hovers /////////////////
-    ///////////////////////////////////////////
-/*
-    function handleDonutHover() {
-        const donutSlices = donut.selectAll(".donutArcSlices");
-        const donutTexts = donut.selectAll(".donutText textPath");
+    //////////////////////////////////////////////
+    //////////// Set up Hovers ///////////////////
+    //////////////////////////////////////////////
 
-        donutSlices
-            .on("mouseover", function(event, d) {
-                console.log("hovered");
-                // Dim all other slices
-                donutSlices.transition().duration(200)
-                    .style("opacity", p => (p.index === d.index ? 1.0 : 0.3));
+    //central label function
+    function labelCentral(text,color){
+        //remove precedent hoverage
+        g.select("#centralLabel").remove();
 
-                // Show the corresponding text
-                donutTexts
-                    .style("visibility", p => (p.index === d.index ? "visible" : "hidden"));
-            })
-            .on("mouseout", function() {
-                console.log("unhovered");
-                // Restore opacity of all slices
-                donutSlices.transition().duration(200)
-                    .style("opacity", 1.0);
+        const padding = 18;
+        const innerRadius = CHORD * 0.9 - padding;
+        const lineHeight = 1;
 
-                // Hide all texts
-                donutTexts
-                    .style("visibility", "hidden");
-            });
-    }*/
+        //define central group
+        const labelGroup = g.append("g")
+                            .attr("id", "centralLabel");
+
+        // 1. Split text into words
+        const words = text.split(/\s+/).reverse();
+
+        // 2. Create the text element and initial tspan
+        // We will append tspans to this text element as we wrap lines
+        const textElement = labelGroup.append("text")
+            .attr("class", "central-label")
+            .attr("text-anchor", "middle")
+            .style("font-family", "Charis SIL, serif")
+            .style("font-weight", d => {if (text=== defaultLabel) {return "bold";} else {return "light";}})
+            .style("fill", d => {if(text === defaultLabel) {return COLORS.central;} else {return COLORS.background;}}); //maybe make it black?
+
+        let tspan = textElement.append("tspan").attr("x", 0).attr("dy", "0em");
+        let line = [];
+        let word;
+        const maxLineWidth = innerRadius * 1; // Allow text to wrap within ~50% of the circle's diameter
+
+        // 3. Word wrapping logic
+        while (word = words.pop()) {
+            line.push(word);
+            tspan.text(line.join(" "));
+            if (tspan.node().getComputedTextLength() > maxLineWidth && line.length > 1) {
+                line.pop();
+                tspan.text(line.join(" "));
+                line = [word];
+                tspan = textElement.append("tspan").attr("x", 0).attr("dy", `${lineHeight}em`).text(word);
+            }
+        }
+
+        // 4. Calculate the final bounding box and the required scaling factor
+        const bbox = textElement.node().getBBox();
+        const textWidth = bbox.width + 20;
+        const textHeight = bbox.height + 20;
+        const textRadius = sqrt(textWidth * textWidth + textHeight * textHeight) / 2;
+
+        // The scale factor is the ratio of the circle's radius to the text's effective radius
+        const scale = innerRadius / textRadius * 0.8; // 0.8 provides a little extra padding
+
+        // 5. Apply the scale and center the text
+        textElement.attr("transform", `scale(${scale})`);
+        
+        // Adjust vertical position after scaling to perfectly center the block
+        // We use getBBox again on the scaled text to get its final height
+        const finalBBox = textElement.node().getBBox();
+        textElement.attr("y", -finalBBox.y - finalBBox.height / 2);
+
+        // 6. Prepend the circle so it's behind the text
+        labelGroup.insert("circle", ".central-label")
+            .attr("id", "labelCentral")
+            .attr("r", innerRadius)
+            .attr("fill", color);
+    }
 
     chart();
 }
