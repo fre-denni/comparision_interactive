@@ -43,12 +43,18 @@ const createCompetencesVisual = (container, webcsv) => {
     let ringData = [];
     let commons = [];
 
-    let links_central, links; //serve?
+    const nodes = [];
+    const nodes_central = [];
+    const links = [];
+    const links_central = [];
 
     let hierarchy = "Title"; //user determined
     let central_nodes = "Fruition Output";
     let properties = "Human Resources";
     let defaultLabel = "Map of Competences and Human Resources for ICH projects";
+
+    //simulations
+    let h_simulation;
 
     //Hover options
     let HOVER_ACTIVE = false;
@@ -58,13 +64,13 @@ const createCompetencesVisual = (container, webcsv) => {
 
     //Visual settings
     const CHORD = 150; //radius of central chord with the nodes -- make variable for future
-    let RADIUS_PROJECTS; //radius of projects nodes that hover around the central (variable with chord)
+    let RADIUS_HIERARCHY = CHORD *2; //radius of projects nodes that hover around the central (variable with chord)
 
     const SHARED_FORCE = 0.7; //force of shared properties
-    const UNSHARED_FORCE = 1; //force for unshared properties -- these will provide an hierarchy
+    const UNSHARED_FORCE = 1.4; //force for unshared properties -- these will provide an hierarchy
 
-    const MAX_PROJECT_WIDTH = 55; //maximum width of the project name before it wraps
-    const PROJECT_PADDING = 20; //padding between project nodes around the circle
+    const MAX_HIERARCHY_WIDTH = 55; //maximum width of the project name before it wraps
+    const HIERARCHY_PADDING = 10; //padding between project nodes around the circle
 
     /////////////////////////////////////////
     /////////////// COLORS //////////////////
@@ -74,12 +80,12 @@ const createCompetencesVisual = (container, webcsv) => {
         "background": "#f7f7f7",
         "ui": "#783CE6",
         "central": "#A682E8",
-        "project": "#EA9DF5",
-        "second-property": "#F2A900",
-        "third-property": "#64D6D3",
-        "fourth-property": "#B2FAF8",
-        "fifth-property": "#F98982",
-        "sixth-property": "#475476",
+        "hierarchy": "#EA9DF5",
+        "commons": "#F2A900",
+        "uncommons": "#64D6D3",
+        "second-property": "#B2FAF8",
+        "third-property": "#F98982",
+        "fourth-property": "#475476",
         "links": "#DADADA",
         "text": "#4D4950"
     };
@@ -103,6 +109,7 @@ const createCompetencesVisual = (container, webcsv) => {
     const svg = d3.select(container).append("svg") //refactor following schema gemini
         .attr("id", "visualisation")
         .style("display", "block")
+        .style("background-color", COLORS.background)
         .style("margin", "0");
     
     const g = svg.append("g")
@@ -127,12 +134,98 @@ const createCompetencesVisual = (container, webcsv) => {
     const scale_link_width = d3.scalePow()
         .exponent(0.75)
         .range([1,2,60])
+    
+    ///////////////////////////////////////////////
+    /////////////// Create visuals ////////////////
+    ///////////////////////////////////////////////
+
+    function chart() {
+
+        //prepare data
+        d3.csv(webcsv)
+        .then(data => {
+            prepareData(data)
+            draw();
+        })
+        .catch(error => {
+            console.error('Error loading or parsing CSV:', error); 
+        });
+
+        h_simulation = setupHierarchySimulation();
+
+        /**********
+         * run force simulation
+         * position the donut in the center
+         * position the hierarchy in a ring
+         * force simulation for commons
+         * force simulation for remaining
+         * setup Hover
+         * setup Click
+         ***********/
+
+        chart.resize();
+    }
+
+    function draw(){
+        g.selectAll("*").remove(); //Clear previous elements
+
+        //draw central donut shape
+        donut();
+
+        //draw force simulation elements
+        drawForceLayout(nodes, links);
+
+        /************
+         * 
+         * Draw labels_central
+         * Draw property
+         * Draw labels
+         * 
+         *************/
+
+        //setup basic label
+        labelCentral(defaultLabel, COLORS.background);
+
+    }//function draw
+
+    chart.resize = () => {
+
+        width = container.offsetWidth;
+        height = width;
+
+        //it's the width that determines the size
+        WIDTH = width;
+        HEIGHT = height;
+
+        svg.attr("width", WIDTH)
+           .attr("height", HEIGHT);
+        
+        g.attr("transform", `translate(${WIDTH / 2}, ${HEIGHT / 2})`);
+
+        if(h_simulation.nodes().lenght > 0) { //restart simulation
+            h_simulation.alpha(0.3).restart();
+        }
+
+        //set the scale factor
+        SF = WIDTH / DEFAULT_SIZE;
+        /*****
+         * ring logic (resize SF if ring doesn't fit)
+         ******/
+        if (nodes.length > 0) draw();
+    }
 
     /////////////////////////////////////////////
     /////////////// Prepare data ////////////////
     /////////////////////////////////////////////
 
     function prepareData(table) {
+        //clear arrays for re-reruns
+        nodes.length = 0;
+        links.lenght = 0;
+        donutData.length = 0;
+        ringData.length = 0;
+        commons.length = 0;
+
         const parseStringifiedArray = (str) => {
         if(!str || typeof str !== 'string' || !str.startsWith('[') || !str.endsWith(']')) {
             return [];
@@ -174,98 +267,49 @@ const createCompetencesVisual = (container, webcsv) => {
             link: Array.from(hier)
         })); //data for donut shape
 
-        ringData = cleanedData.map(d => ({
-            source: d.hier,
-            target: d.prop
-        })); //data for ring shape
-
-        const shared = [];
+        commons = new Set();
         for (const [prop, count] of propCount.entries()) {
             if (count > 1) {
-                shared.push(prop);
+                commons.add(prop);
             }
         }
-        commons = shared;
 
-        console.log("Data processed");
-        console.log(donutData);
-        console.log(ringData);
-        console.log(commons);
+        //node logic -- push to node for force visualisation
+        //first nodes[]
+        const addedIds = new Set();
 
-        draw();
-    }//prepare data for visualisation
+        cleanedData.forEach(d => {
+            const h = d.hier;
+            if(!addedIds.has(h)) {
+              nodes.push({id: h, type: "hierarchy", r:15, color: COLORS.hierarchy});
+              addedIds.add(h)   
+            }
 
-
-    ///////////////////////////////////////////////
-    /////////////// Create visuals ////////////////
-    ///////////////////////////////////////////////
-
-    function chart() {
-
-        //prepare data
-        d3.csv(webcsv)
-        .then(prepareData) //add a loading animation?
-        .catch(error => {
-            console.error('Error loading or parsing CSV:', error); 
+            d.prop.forEach(p => {
+                if(!addedIds.has(p)) {
+                    nodes.push({
+                        id: p,
+                        type: commons.has(p) ? "commons" : "uncommons",
+                        r: 8,
+                        color: commons.has(p) ? COLORS.commons : COLORS.uncommons
+                    });
+                    addedIds.add(p);
+                }
+                links.push({source: h, target: p});
+            });
         });
 
-        /**********
-         * run force simulation
-         * position the donut in the center
-         * position the hierarchy in a ring
-         * force simulation for commons
-         * force simulation for remaining
-         * setup Hover
-         * setup Click
-         ***********/
+        //nodes_central[]
 
-        chart.resize();
-    }
-
-    function draw(){
-        g.selectAll("*").remove(); //Clear previous elements
-
-        g.attr("transform", `translate(${WIDTH/2}, ${HEIGHT/2})`)
-         .style("background-color", COLORS.background);
-
-        //draw central donut shape
-        donut();
-
-        //position hierarchy
-        //forceHierarchyNodes();
-
-        /************
-         * 
-         * Draw links
-         * Draw labels_central
-         * Draw hierarchy
-         * Draw property
-         * Draw labels
-         * 
-         *************/
-        //handleDonutHover();
-
-    }//function draw
-
-    chart.resize = () => {
-
-        width = container.offsetWidth;
-        height = width;
-
-        //it's the width that determines the size
-        WIDTH = width;
-        HEIGHT = height;
-
-        svg.attr("width", WIDTH)
-           .attr("height", HEIGHT);
-
-        //set the scale factor
-        SF = WIDTH / DEFAULT_SIZE;
-        /*****
-         * ring logic (resize SF if ring doesn't fit)
-         ******/
-        draw();
-    }
+        console.log("Data processed");
+        console.log("Donut data:");
+        console.log(donutData);
+        console.log("Forcelayout-1 data:");
+        console.log(nodes);        
+        console.log(links);        
+        console.log("Commons:");
+        console.log(commons);
+    }//prepare data for visualisation
     
     /////////////////// Donut /////////////////////
     /// take number of links_central and uses it as a value
@@ -288,19 +332,18 @@ const createCompetencesVisual = (container, webcsv) => {
         //define donut object
         const donut = g.append("g")
                         .attr("id", "donut-chart")
-                        .attr("width", width)
-                        .attr("height", height)
+                      /*.attr("width", width)
+                        .attr("height", height)*/
                         .style("max-width", "100%")
                         .style("height", "auto");
 
         //draw donut and data join
-        const slices = donut.selectAll()
+        const slices = donut.selectAll(".donutArcsSlices")
              .data(pie(donutData))
              .enter().append("path")
              .attr("class", "donutArcSlices")
              .attr("d", arc)
              .style("fill", COLORS.central)
-
 
         //manage hover of slices -- spostarla in una funzione esterna così da fare stesso effetto ad altri elementi della dataviz
         slices.on("mouseover", function(event, d) {
@@ -318,13 +361,96 @@ const createCompetencesVisual = (container, webcsv) => {
                     labelCentral(defaultLabel, COLORS.background)
                });
 
-        //hover slice
+        //restore pre-hover
         labelCentral(defaultLabel, COLORS.background);
 
     }
 
-    /////////////// Force-Layout 1 ///////////////
-    function hierarchyRing(){
+    ////////////////////////////////////////////
+    /////////////// Simulations ////////////////
+    ////////////////////////////////////////////
+    function setupHierarchySimulation() {
+        return d3.forceSimulation()
+                .force("link", d3.forceLink().id(d => d.id).distance(30).strength(0.6))
+                .force("charge", d3.forceManyBody().strength(d => {
+                    if (d.type === "commons") return -50 * SHARED_FORCE;
+                    if (d.type === "uncommons") return -100 * UNSHARED_FORCE;
+                    return -200;
+                }))
+                .force("collide", d3.forceCollide().radius(d => d.r + HIERARCHY_PADDING))
+                .force("center", d3.forceCenter(0, 0))
+                .force("radial", d3.forceRadial(d => d.type === 'hierarchy' ? RADIUS_HIERARCHY : RADIUS_HIERARCHY + 50).strength(0.8));
+    }
+
+    ///////// Force-Layout 1 (Hierarchy) ////////
+
+    function drawForceLayout(nodesData, linksData) {
+        const linkElements = g.append("g")
+                              .attr("id", "link-group")
+                              .selectAll("line")
+                              .data(linksData)
+                              //.enter().append("line")
+                              .join("line")
+                              .attr("stroke", COLORS.links)
+                              .attr("stroke-width", 0.5);
+        
+        const nodeElements = g.append("g")
+                              .attr("id", "nodes-group")
+                              .selectAll("g")
+                              .data(nodesData)
+                            //.enter().append("g")
+                              .join("g");
+        
+        nodeElements.append("circle")
+                    .attr("r", d => d.r)
+                    .attr("fill", d => d.color);
+        
+        nodeElements.append("title") //create a label not title
+                    .text(d => d.id)
+                    .style("font-family", "Inter, sans-serif")
+                    .style("font-style", "normal")
+                    .style("colors", COLORS.text)
+                    .style("font-size", 10);
+
+        nodeElements.on("mouseover", function(event, d){
+            nodeElements.transition()
+                        .duration(200)
+                        .style("opacity", (node_d) => (node_d.id === d.id ? 1.0 : 0.5));
+
+            labelCentral(d.id, d.color);
+        })
+        .on("mouseout", function(event, d){
+            nodeElements.transition()
+                        .duration(200)
+                        .style("opacity", 1);
+            
+            labelCentral(defaultLabel, COLORS.background)
+        });
+
+        //restore pre-hover
+        labelCentral(defaultLabel, COLORS.background);
+
+        //Connect data to simulation
+        h_simulation.nodes(nodesData);
+        h_simulation.force("link").links(linksData);
+
+        h_simulation.on("tick", () => {
+            linkElements
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+            
+            nodeElements
+                .attr("transform", d => `translate(${d.x},${d.y})`);
+        });
+
+        h_simulation.alpha(1).restart();
+
+    }
+
+    //display circle later
+    function drawhierarchyRing(){
         console.log("Drawing ring...");
         const radius = RADIUS_PROJECTS;
 
@@ -334,7 +460,8 @@ const createCompetencesVisual = (container, webcsv) => {
                          .attr("height", height)
                          .attr("r", radius)
                          .attr("fill", COLORS["third-property"])
-
+        //display circle with a nice gradient
+        //display label with type of hierarchy
     }
 
     /////////////// Force-Layout 2 ///////////////
@@ -391,7 +518,7 @@ const createCompetencesVisual = (container, webcsv) => {
         const bbox = textElement.node().getBBox();
         const textWidth = bbox.width + 20;
         const textHeight = bbox.height + 20;
-        const textRadius = sqrt(textWidth * textWidth + textHeight * textHeight) / 2;
+        const textRadius= sqrt(textWidth * textWidth + textHeight * textHeight) / 2;
 
         // The scale factor is the ratio of the circle's radius to the text's effective radius
         const scale = innerRadius / textRadius * 0.8; // 0.8 provides a little extra padding
@@ -409,6 +536,8 @@ const createCompetencesVisual = (container, webcsv) => {
             .attr("id", "labelCentral")
             .attr("r", innerRadius)
             .attr("fill", color);
+        
+        // 7. add label on textPath that represent value of central nodes
     }
 
     chart();
