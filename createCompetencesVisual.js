@@ -56,6 +56,12 @@ const createCompetencesVisual = (container, webcsv) => {
     //simulations
     let h_simulation;
 
+    //part of visualisation
+    let slices;
+    let node;
+    let link;
+
+
     //Hover options
     let HOVER_ACTIVE = false;
     let HOVERED_NODE = null;
@@ -338,7 +344,7 @@ const createCompetencesVisual = (container, webcsv) => {
                         .style("height", "auto");
 
         //draw donut and data join
-        const slices = donut.selectAll(".donutArcsSlices")
+        slices = donut.selectAll(".donutArcsSlices")
              .data(pie(donutData))
              .enter().append("path")
              .attr("class", "donutArcSlices")
@@ -346,20 +352,8 @@ const createCompetencesVisual = (container, webcsv) => {
              .style("fill", COLORS.central)
 
         //manage hover of slices -- spostarla in una funzione esterna così da fare stesso effetto ad altri elementi della dataviz
-        slices.on("mouseover", function(event, d) {
-                    slices.transition()
-                      .duration(200)
-                      .style("opacity", (slice_d) => (slice_d.data.name === d.data.name ? 1.0 : 0.5));
-    
-                    labelCentral(d.data.name, COLORS.central);
-               })
-               .on("mouseout", function(event, d){
-                    slices.transition()
-                      .duration(200)
-                      .style("opacity", 1);
-
-                    labelCentral(defaultLabel, COLORS.background)
-               });
+        slices.on("mouseover", handleMouseOver)
+              .on("mouseout", handleMouseOut);
 
         //restore pre-hover
         labelCentral(defaultLabel, COLORS.background);
@@ -385,47 +379,35 @@ const createCompetencesVisual = (container, webcsv) => {
     ///////// Force-Layout 1 (Hierarchy) ////////
 
     function drawForceLayout(nodesData, linksData) {
-        const linkElements = g.append("g")
-                              .attr("id", "link-group")
-                              .selectAll("line")
-                              .data(linksData)
-                              //.enter().append("line")
-                              .join("line")
-                              .attr("stroke", COLORS.links)
-                              .attr("stroke-width", 0.5);
+        link = g.append("g")
+                .attr("id", "link-group")
+                .selectAll("line")
+                .data(linksData)
+              //.enter().append("line")
+                .join("line")
+                .attr("stroke", COLORS.links)
+                .attr("stroke-width", 0.5);
         
-        const nodeElements = g.append("g")
-                              .attr("id", "nodes-group")
-                              .selectAll("g")
-                              .data(nodesData)
-                            //.enter().append("g")
-                              .join("g");
+        node = g.append("g")
+                .attr("id", "nodes-group")
+                .selectAll("g")
+                .data(nodesData)
+              //.enter().append("g")
+                .join("g");
         
-        nodeElements.append("circle")
-                    .attr("r", d => d.r)
-                    .attr("fill", d => d.color);
+        node.append("circle")
+            .attr("r", d => d.r)
+            .attr("fill", d => d.color);
         
-        nodeElements.append("title") //create a label not title
-                    .text(d => d.id)
-                    .style("font-family", "Inter, sans-serif")
-                    .style("font-style", "normal")
-                    .style("colors", COLORS.text)
-                    .style("font-size", 10);
+        node.append("title") //create a label not title
+            .text(d => d.id)
+            .style("font-family", "Inter, sans-serif")
+            .style("font-style", "normal")
+            .style("colors", COLORS.text)
+            .style("font-size", 10);
 
-        nodeElements.on("mouseover", function(event, d){
-            nodeElements.transition()
-                        .duration(200)
-                        .style("opacity", (node_d) => (node_d.id === d.id ? 1.0 : 0.5));
-
-            labelCentral(d.id, d.color);
-        })
-        .on("mouseout", function(event, d){
-            nodeElements.transition()
-                        .duration(200)
-                        .style("opacity", 1);
-            
-            labelCentral(defaultLabel, COLORS.background)
-        });
+        node.on("mouseover", handleMouseOver)
+            .on("mouseout", handleMouseOut);
 
         //restore pre-hover
         labelCentral(defaultLabel, COLORS.background);
@@ -435,13 +417,13 @@ const createCompetencesVisual = (container, webcsv) => {
         h_simulation.force("link").links(linksData);
 
         h_simulation.on("tick", () => {
-            linkElements
+            link
                 .attr("x1", d => d.source.x)
                 .attr("y1", d => d.source.y)
                 .attr("x2", d => d.target.x)
                 .attr("y2", d => d.target.y);
             
-            nodeElements
+            node
                 .attr("transform", d => `translate(${d.x},${d.y})`);
         });
 
@@ -471,6 +453,47 @@ const createCompetencesVisual = (container, webcsv) => {
     //////////////////////////////////////////////
     //////////// Set up Hovers ///////////////////
     //////////////////////////////////////////////
+
+    /*
+    * Handles mouseiver events for both slices and nodes
+    */
+    function handleMouseOver(event, d) {
+        //get common identifier from the data object (d)
+        const name = d.id || d.data.name;
+
+        //get the color from the nodes data or default
+        const color = d.color || COLORS.central;
+
+        //Fade non-hovered slices
+        slices.transition()
+              .duration(200)
+              .style("opacity", (slice_d) => (slice_d.data.name === name ? 1.0 : 0.5));
+
+        //Fade non-hovered nodes
+        node.transition()
+            .duration(200)
+            .style("opacity", (node_d) => (node_d.id === name ? 1.0 : 0.5));
+
+        labelCentral(name, color);
+    }
+
+    /****
+     * Handles mouseout events
+     * 
+    */
+   function handleMouseOut() {
+        //Restore full opacity
+        slices.transition()
+              .duration(200)
+              .style("opacity", 1);
+
+        node.transition()
+            .duration(200)
+            .style("opacity", 1);
+
+        //Restore default central label
+        labelCentral(defaultLabel, COLORS.background);
+   }
 
     //central label function
     function labelCentral(text,color){
