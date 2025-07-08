@@ -61,7 +61,6 @@ const createCompetencesVisual = (container, webcsv) => {
     let node;
     let link;
 
-
     //Hover options
     let HOVER_ACTIVE = false;
     let HOVERED_NODE = null;
@@ -458,30 +457,66 @@ const createCompetencesVisual = (container, webcsv) => {
     * Handles mouseiver events for both slices and nodes
     */
     function handleMouseOver(event, d) {
-        //get common identifier from the data object (d)
-        const name = d.id || d.data.name;
+        const isSlice = !!d.data; // Check if the hovered element is a slice
+        const hoveredId = isSlice ? d.data.name : d.id;
+        const color = isSlice ? COLORS.central : d.color;
 
-        //get the color from the nodes data or default
-        const color = d.color || COLORS.central;
+        const highlightedIds = new Set([hoveredId]);
 
-        //Fade non-hovered slices
-        slices.transition()
-              .duration(200)
-              .style("opacity", (slice_d) => (slice_d.data.name === name ? 1.0 : 0.5));
+        if (isSlice) {
+            // It's a slice, find connected hierarchy nodes
+            d.data.link.forEach(hierId => {
+                highlightedIds.add(hierId);
+                // And from hierarchy nodes, find connected properties
+                links.forEach(l => {
+                    if (l.source.id === hierId || l.target.id === hierId) {
+                        highlightedIds.add(l.source.id);
+                        highlightedIds.add(l.target.id);
+                    }
+                });
+            });
+        } else { // It's a node
+            // Add direct links
+            links.forEach(l => {
+                if (l.source.id === hoveredId) highlightedIds.add(l.target.id);
+                if (l.target.id === hoveredId) highlightedIds.add(l.source.id);
+            });
 
-        //Fade non-hovered nodes
-        node.transition()
-            .duration(200)
-            .style("opacity", (node_d) => (node_d.id === name ? 1.0 : 0.5));
+            // Find the central slice(s) it's connected to
+            donutData.forEach(sliceData => {
+                // If it's a hierarchy node check its links
+                if (d.type === 'hierarchy' && sliceData.link.includes(hoveredId)) {
+                    highlightedIds.add(sliceData.name);
+                }
+                // If it's a property node, check its hierarchy connections
+                if (d.type !== 'hierarchy') {
+                     links.forEach(l => {
+                        if (l.source.id === hoveredId && sliceData.link.includes(l.target.id)) {
+                             highlightedIds.add(sliceData.name);
+                        }
+                        if (l.target.id === hoveredId && sliceData.link.includes(l.source.id)) {
+                             highlightedIds.add(sliceData.name);
+                        }
+                    });
+                }
+            });
+        }
 
-        labelCentral(name, color);
+        // Apply styles based on the highlighted set
+        node.transition().duration(200)
+            .style("opacity", node_d => highlightedIds.has(node_d.id) ? 1.0 : 0.2);
+
+        slices.transition().duration(200)
+            .style("opacity", slice_d => highlightedIds.has(slice_d.data.name) ? 1.0 : 0.2);
+
+        // Show the main central label
+        labelCentral(hoveredId, color);
+
+        // Show the top-layer labels for connected elements
+        showTopLayerLabel(highlightedIds, hoveredId);
     }
 
-    /****
-     * Handles mouseout events
-     * 
-    */
-   function handleMouseOut() {
+    function handleMouseOut() {
         //Restore full opacity
         slices.transition()
               .duration(200)
@@ -493,7 +528,54 @@ const createCompetencesVisual = (container, webcsv) => {
 
         //Restore default central label
         labelCentral(defaultLabel, COLORS.background);
-   }
+
+        // Remove the group of top-layer labels
+        g.select(".top-layer-labels").remove();
+    }
+
+    /**
+     * Shows a label on a separate top layer for the hovered node.
+     * @param {Set<string>} highlightedIds - A set of IDs for all elements to be highlighted.
+     * @param {string} hoveredId - The ID of the element currently being hovered over.
+     */
+    function showTopLayerLabel(highlightedIds, hoveredId) {
+        // Remove any existing top-layer labels
+        g.selectAll(".top-layer-label").remove();
+
+        const topLabels = g.append("g").attr("class", "top-layer-labels");
+
+        // Create labels for nodes
+        node.each(function(node_d) {
+            if (highlightedIds.has(node_d.id) && node_d.id !== hoveredId) {
+                topLabels.append("text")
+                    .attr("class", "top-layer-label")
+                    .attr("x", node_d.x)
+                    .attr("y", node_d.y - node_d.r - 5) // Position above the node
+                    .attr("text-anchor", "middle")
+                    .style("font-size", "10px")
+                    .style("fill", "black")
+                    .style("pointer-events", "none")
+                    .text(node_d.id);
+            }
+        });
+
+        // Create labels for slices
+        slices.each(function(slice_d) {
+             if (highlightedIds.has(slice_d.data.name) && slice_d.data.name !== hoveredId) {
+                const [x, y] = d3.arc().innerRadius(CHORD).outerRadius(CHORD).centroid(slice_d);
+
+                topLabels.append("text")
+                    .attr("class", "top-layer-label")
+                    .attr("x", x)
+                    .attr("y", y)
+                    .attr("text-anchor", "middle")
+                    .style("font-size", "10px")
+                    .style("fill", "black")
+                    .style("pointer-events", "none")
+                    .text(slice_d.data.name);
+            }
+        });
+    }
 
     //central label function
     function labelCentral(text,color){
